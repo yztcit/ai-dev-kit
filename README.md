@@ -1,4 +1,4 @@
-# AI-dev-kit
+# ai-dev-kit
 
 跨项目通用的 Claude Code 能力沉淀仓库。这里的每个 plugin 都**不含任何业务/团队语境**，任何项目、任何团队装上就能用。
 
@@ -6,7 +6,7 @@
 
 | 层 | 仓库 | 特征 |
 |---|---|---|
-| 公共通用（本仓库） | `yztcit/AI-dev-kit` | 不含业务、不含团队语境，哪里都能用 |
+| 公共通用（本仓库） | `yztcit/ai-dev-kit` | 不含业务、不含团队语境，哪里都能用 |
 | 团队共用 | `yztcit/claude_plugins`（marketplace `tal-tools`） | TAL 团队约定、内部工具 |
 | 项目业务 | 各项目 `.claude/` | 绑死本项目（如 ai_eyes / xpy_interact） |
 
