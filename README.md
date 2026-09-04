@@ -20,6 +20,18 @@
 
 判据就一条：把插件放到一个完全陌生的项目里，它能否不依赖任何额外约定直接生效。
 
+## health/：skill 健康巡检工具（流水线 A）
+
+`health/` 是一套跨项目通用的 skill 健康巡检工具，通过解析本地会话转录（`~/.claude/projects/<项目>/*.jsonl`）算出每个 skill 的冷门度/调用次数/重试率，产出「例外队列」供人裁决，替代人工例行巡检。
+
+- `scan_skill_usage.py` — 转录解析，产出调用统计 + 例外队列
+- `decision_log.py` — 决策日志（双向 override + ttl 重入队列）
+- `skill-health-check.sh` — 巡检入口，有例外弹 macOS 通知
+- `install.sh` — 幂等安装器，软链脚本 + 注册 launchd 定时任务（周一 09:15）
+
+换设备安装：`clone` 本仓库后 `./health/install.sh`。
+
 ## 当前状态
 
-空仓库，等待沉淀出第一个真正通用的能力。不提前抽象——先在下层跑通、被多个项目复用，再晋升。
+- `plugins/` 尚空，等待沉淀出第一个真正通用的插件能力。不提前抽象——先在下层跑通、被多个项目复用，再晋升。
+- `health/` 已落地（流水线 A），报告与决策日志写入 `health/report/`（gitignore，本地可见）。
