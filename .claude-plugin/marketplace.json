@@ -3,5 +3,12 @@
   "owner": {
     "name": "C_UWanna"
   },
-  "plugins": []
+  "plugins": [
+    {
+      "name": "video",
+      "source": "./plugins/video",
+      "description": "视频生成能力：video-pe 将文字与图/视频/音频素材引用整理成结构化视频生成请求",
+      "category": "media"
+    }
+  ]
 }
