@@ -4,7 +4,9 @@ __pycache__/
 
 # 巡检报告与快照：派生自本机转录（机器特定、每周重生成、噪声大）→ 不共享
 report/*
-!report/.gitkeep
-# 例外：决策日志是**人工判断**，不是遥测。低频、高价值、append-only，
-# 换设备/换人都不该从零重新裁决一遍 → 要共享、要累积。
-!report/skill-decisions.jsonl
+
+# 注意：决策日志**不在**这里——它按资产所属层存放（见 decision_log.py）：
+#   公共层资产 → <本仓库>/.claude/health-decisions.jsonl
+#   团队层资产 → <团队仓库>/.claude/health-decisions.jsonl
+#   项目层资产 → <项目>/.claude/health-decisions.jsonl
+# 分层的原因：裁决理由天然带业务语境，塞进公共层就违反了它自己的准入判据。

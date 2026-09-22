@@ -25,6 +25,23 @@ HOME = os.path.expanduser("~")
 MARKETPLACES = os.path.join(HOME, ".claude", "plugins", "marketplaces")
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", "out", "target", ".venv", "vendor"}
 
+# 本仓库（公共层）自身：它的 plugins/ 不经 marketplace 注册，须单独扫，
+# 否则公共层资产会被误判成 builtin（内置）而排除出可裁决范围。
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+
+def _public_marketplace_name():
+    import json
+    try:
+        with open(os.path.join(REPO_ROOT, ".claude-plugin", "marketplace.json"),
+                  encoding="utf-8") as f:
+            return json.load(f).get("name") or "public-layer"
+    except (OSError, ValueError):
+        return "public-layer"
+
+
+PUBLIC_MARKETPLACE = _public_marketplace_name()
+
 BUILTIN = "builtin"
 
 # 别人的 marketplace：装在你机器上、但不由你维护，不该进「需你裁决」的队列。
@@ -93,6 +110,13 @@ def build_source_map(root):
     def add(key, src):
         sources.setdefault(key, set()).add(src)
 
+    # 公共层：本仓库自己的 plugins/（不经 marketplace 注册）
+    own_plugins = os.path.join(REPO_ROOT, "plugins")
+    if os.path.isdir(own_plugins):
+        for plugin in os.listdir(own_plugins):
+            for key in collect_assets(os.path.join(own_plugins, plugin)):
+                add(key, f"plugin:{PUBLIC_MARKETPLACE}")
+
     # 插件层：已装 marketplace 的载荷
     if os.path.isdir(MARKETPLACES):
         for mkt in os.listdir(MARKETPLACES):
@@ -118,7 +142,7 @@ def build_source_map(root):
 def classify(key, sources):
     """给定 (kind, name) 返回来源标注。
 
-    磁盘上找不到 → builtin。多来源时合并显示（如 `plugin:tal-tools+builtin`）——
+    磁盘上找不到 → builtin。多来源时合并显示（如 `plugin:<你的>+plugin:<外部>`）——
     这正说明该名字有歧义，不该假装能分辨（实测：官方市场的 feature-dev 与
     团队的 dev 插件都有 code-reviewer）。
     """

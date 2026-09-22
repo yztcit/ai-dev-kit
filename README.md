@@ -6,9 +6,9 @@
 
 | 层 | 仓库 | 特征 |
 |---|---|---|
-| 公共通用（本仓库） | `yztcit/ai-dev-kit` | 不含业务、不含团队语境，哪里都能用 |
-| 团队共用 | `yztcit/claude_plugins`（marketplace `tal-tools`） | TAL 团队约定、内部工具 |
-| 项目业务 | 各项目 `.claude/` | 绑死本项目（如 ai_eyes / xpy_interact） |
+| 公共通用（本仓库） | 本仓库 | 不含业务、不含团队语境，哪里都能用 |
+| 团队共用 | 各团队的私有 marketplace 仓库 | 团队约定、内部工具 |
+| 项目业务 | 各项目 `.claude/` | 绑死本项目 |
 
 依赖单向：`项目业务 → 团队共用 → 公共通用`，禁止反向引用。
 
@@ -57,9 +57,9 @@ Skill（`name:"Skill"`）与 Agent（`name:"Agent"|"Task"` 的 `subagent_type`�
 
 | 资产 | 原始调用名 | 来源 | 能裁决吗 |
 |---|---|---|---|
-| `code-reviewer` | `dev:code-reviewer` | 你的插件 | ✅ |
-| `panel` / `craft` | 裸名 | 项目层 | ✅ |
-| `xpy-interact` / `agent-os` | 裸名 | 项目层 | ✅ |
+| `my-skill`（带插件前缀） | `myplugin:my-skill` | 你的插件 | ✅ |
+| `proj-skill-a` / `proj-skill-b` | 裸名 | 项目层 | ✅ |
+| `proj-agent-x` | 裸名 | 项目层 | ✅ |
 | `run` / `Explore` / `Plan` | 裸名 | **内置**（磁盘上无对应文件） | ❌ |
 | `frontend-design` | `frontend-design:frontend-design` | **官方 marketplace** | ❌ |
 
@@ -71,7 +71,7 @@ Skill（`name:"Skill"`）与 Agent（`name:"Agent"|"Task"` 的 `subagent_type`�
 
 **两个已知边界（勿当 bug）**：
 
-1. **同名跨源无法分辨**。官方市场的 `feature-dev` 与团队 `dev` 插件**都有** `code-reviewer` → 该资产标为 `插件:claude-plugins-official+插件:tal-tools`。这是诚实输出：名字本身不足以定源。（转录里的前缀 `dev:` 本可区分，但裸名形式同样存在，故不假装能分辨。）多来源只要含一个自家来源即算可裁决。
+1. **同名跨源无法分辨**。实测：官方 marketplace 的某插件与团队某插件**存在同名资产** → 该资产标为两个来源并列（`插件:<外部>+插件:<你的>`）。这是诚实输出：名字本身不足以定源。（转录里的插件前缀本可区分，但裸名形式同样存在，故不假装能分辨。）多来源只要含一个自家来源即算可裁决。
 2. **项目若在扫描根之外，会被归为「内置」而静默排除出队列**。故输出里始终打印扫描根（`--root`，默认 `~/workspace`）——项目不在这个根下时先改它，否则你会看到一份「无例外」的假阴性。
 
 ### 两个配置不变量（改了会静默失效）
@@ -93,7 +93,7 @@ Skill（`name:"Skill"`）与 Agent（`name:"Agent"|"Task"` 的 `subagent_type`�
 
 ```
 Skill 健康巡检：需裁决
-4 个待裁决：panel、run、xpy-interact、frontend-design
+3 个待裁决：proj-skill-a、proj-skill-b、proj-agent-x
 ```
 
 通知点不出明细（`display notification` 不支持指定点击目标，见下「平台边界」），看到后走 ② 或 ③。
@@ -145,7 +145,6 @@ python3 ~/.claude/scripts/decision_log.py due
 | `--action` | ✅ | 两个维度共用一份日志，动作词表按问题类型分：**用量侧** `keep` / `retire`（留着 / 下架）｜**放置侧** `promote` / `hold`（上移共享 / 保持本地） |
 | `--reason` | ✅ | 为什么。写清楚——它是下次复查时唯一的上下文 |
 | `--override` | | 标记这是**推翻**评测结论的人工判断 |
-| `--scenario-tag` | | override keep 时标注场景（如「某机型兼容」） |
 | `--ttl YYYY-MM-DD` | | 仅 keep 生效：到期自动重回例外队列，避免「暂留变永久」 |
 | `--by` | | 默认取 `$USER` |
 
@@ -154,11 +153,11 @@ python3 ~/.claude/scripts/decision_log.py due
 ```bash
 # 评测报冷门，但你知道它是按需调用 → keep，并定复查日期
 python3 ~/.claude/scripts/decision_log.py record \
-  --skill panel --action keep --reason "评审类 skill，按需调用不是冷门" --ttl 2026-12-31
+  --skill proj-skill-a --action keep --reason "评审类 skill，按需调用不是冷门" --ttl 2026-12-31
 
 # 评测还行，但你判断该下架 → retire + override（理由回灌评测，修正盲区）
 python3 ~/.claude/scripts/decision_log.py record \
-  --skill xxx --action retire --override --reason "与官方同类重复，我们的版本无增量"
+  --skill some-skill --action retire --override --reason "与官方同类重复，我们的版本无增量"
 ```
 
 复查：
@@ -172,13 +171,23 @@ python3 ~/.claude/scripts/decision_log.py due     # ttl 到期的 keep，需重�
 
 - 已裁决且未到复查日 → **退出例外队列**，不再进通知。不这么做的话「裁决完还在催」，通知每周重复同一件事，最后被整体无视。
 - `keep` / `hold` 可带 `--ttl`：到期才重回队列（避免「暂留变永久」）。不带 ttl = 永久保留，这是合法选择。
-- 已裁决的资产**滑出时间窗口也会静音**：对「keep、按需调用」的资产，滑出是预期而非新闻（实测 `panel`：裁决时已 28 天未用，次周必滑出）。要定期复查请用 `--ttl`，那是它的职责。
+- 已裁决的资产**滑出时间窗口也会静音**：对「keep、按需调用」的资产，滑出是预期而非新闻（实测某项目 skill：裁决时已 28 天未用，次周必滑出）。要定期复查请用 `--ttl`，那是它的职责。
 - `promote` 是**有执行动作**的裁决（要把能力真搬进共享层）：不再进通知，但输出里标注「⚠️ 待执行：上移到共享层」，避免搬运被遗忘；真搬完之后候选自然不再被检出。
 
-**落盘与共享范围**：`health/report/skill-decisions.jsonl`
+**落盘：决策跟随资产所属层**（这是硬规则，不是偏好）
 
-- **决策日志共享**（`.gitignore` 里单独放行 `!report/skill-decisions.jsonl`）。它是**人工判断**，不是遥测：低频、高价值、append-only，换设备/换人不该从零重新裁决一遍。每行自带 `decided_at` 与 `by`，故配 `merge=union`（见 `health/.gitattributes`）——两人各自追加时两边都不丢行。
-- **巡检报告与快照不共享**（`report/*`）：派生自本机转录，机器特定、每周重生成、噪声大。
+| 资产来源 | 决策写到哪 |
+|---|---|
+| 项目层 `project:<项目>` | `<项目>/.claude/health-decisions.jsonl` |
+| 团队层 `plugin:<团队 marketplace>` | `<团队仓库>/.claude/health-decisions.jsonl` |
+| 公共层 `plugin:<本仓库 marketplace>` | 本仓库 `.claude/health-decisions.jsonl` |
+| 内置 / 外部 marketplace | **拒绝写入**（不属于你的任何层） |
+
+**为什么必须分层**：公共层明令「不含任何业务/团队语境」，而裁决理由天然带业务语境（"某产品线的 agent，迭代时才用"）。把项目层资产的裁决记进公共仓库，就是往公共层灌业务语境——违反它自己的准入判据。分层之后，项目层决策落在（通常 gitignore 掉的）项目 `.claude/` 里，**天然就不共享，这正是该有的结果**。
+
+- **读取是跨层聚合的**：`list` / `due` / 两个扫描器都读全部层，所以你看得到所有裁决。
+- 团队层的仓库路径写在用户级配置 `~/.claude/health-layers.json`（机器特定，不进任何仓库）：`{"marketplaces": {"<marketplace 名>": "<该层仓库路径>"}}`。未配置的 marketplace 会被**拒绝写入并提示**——宁可不记，也不写错层。
+- 决策日志是 append-only JSONL，每行自带 `decided_at` 与 `by`，故配 `merge=union`（见仓库根 `.gitattributes`）——两人各自追加时两边都不丢行。它**是共享的**（人工判断，低频高价值，换设备/换人不该从零重新裁决）；巡检报告与快照**不共享**（`health/report/*`，派生自本机转录，机器特定、每周重生成）。
 
 > 巡检报告的每个例外下面会直接列出对应的 `record` 命令行，照抄改 `action` / `reason` 即可。
 
@@ -190,7 +199,7 @@ python3 ~/.claude/scripts/decision_log.py due     # ttl 到期的 keep，需重�
 - 用 git remote 归并「同一项目的多份副本」，避免把副本误算成两个项目。
 - **只 flag，不做动作**。去语境化是语义动作，由人裁决后手工上移（检测与决策分离）。
 
-**已知边界（勿当 bug）**：判据按**名字**匹配，看不见**近义不同名**的覆盖。例如项目层的 `requirement-analysis` 与团队层的 `solution-design` 职责相近却不同名 → 会被报为候选，实际可能只需人工确认「已覆盖」。这正是它只出候选、不出结论的原因。
+**已知边界（勿当 bug）**：判据按**名字**匹配，看不见**近义不同名**的覆盖。例如项目层的某「需求分析」skill 与团队层的某「方案设计」skill 职责相近却不同名 → 会被报为候选，实际可能只需人工确认「已覆盖」。这正是它只出候选、不出结论的原因。
 
 ### 平台边界（当前只支持 macOS）
 
@@ -207,5 +216,5 @@ python3 ~/.claude/scripts/decision_log.py due     # ttl 到期的 keep，需重�
 ## 当前状态
 
 - `plugins/video` 已落地：`video-pe` 视频生成请求整理。
-- `health/` 已落地（流水线 A），产出写入 `health/report/`。**其中决策日志 `skill-decisions.jsonl` 共享**（人工判断，跨设备/跨人累积），巡检报告与快照不共享（派生自本机转录）。覆盖已从「仅 Skill」扩到「Skill + Agent」，并补齐失败信号、快照与晋升候选检测。
+- `health/` 已落地（流水线 A）。巡检报告与快照写入 `health/report/`（不共享，派生自本机转录）；**决策日志按资产所属层存放**（见上「落盘」表），跨层聚合读取。覆盖已从「仅 Skill」扩到「Skill + Agent」，并补齐失败信号、快照、晋升候选检测与「裁决后退出队列」的闭环。
 - **未落地**：流水线 B（回归门禁，judge 打分 + 冻结基线）、流水线 C（官方/依赖漂移检测）。B 是唯一能产出「更好」的环节——A 只能告诉谁没人用，说不出谁做得好。

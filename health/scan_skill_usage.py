@@ -303,7 +303,7 @@ def main():
 
     # 已裁决且未到复查日的，退出队列——否则「裁决完还在催」= 闭环没闭上，
     # 通知会每周重复同一件事，最后被整体无视。
-    decided = latest_per_skill(load_decisions())
+    decided = latest_per_skill(load_decisions(args.root))
     exceptions, settled = [], []
     for name, a in actionable:
         rec = decided.get(name)
@@ -323,7 +323,7 @@ def main():
         prev_assets = prev.get("assets") or {}
         for name in sorted(set(prev_assets) - set(agg)):
             # 已裁决的资产滑出窗口不是新闻——尤其「keep、按需调用」的，滑出是**预期**
-            # （panel 实测：裁决时 28 天未用，次周必滑出 → 否则通知会为一件已决定的事
+            # （实测：某项目 skill 裁决时已 28 天未用，次周必滑出 → 否则通知会为一件已决定的事
             # 反复响）。要定期重新审视请用 --ttl，那是它的职责。
             (vanished_muted if name in settled_names else vanished).append(name)
 
