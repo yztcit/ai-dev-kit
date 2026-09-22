@@ -1,0 +1,2 @@
+{"skill": "panel", "action": "keep", "override": false, "reason": "AI小说工厂实施的专家团队，不下架", "scenario_tag": null, "ttl": null, "decided_at": "2026-09-22T12:55:18.928740+00:00", "by": "tal"}
+{"skill": "xpy-interact", "action": "keep", "override": false, "reason": "新培优纸屏互动agent，迭代和bug fix时才使用", "scenario_tag": null, "ttl": null, "decided_at": "2026-09-22T12:56:39.443176+00:00", "by": "tal"}

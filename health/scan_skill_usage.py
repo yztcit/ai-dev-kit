@@ -32,6 +32,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from asset_inventory import build_source_map, classify, is_actionable
+from decision_log import latest_per_skill, load_decisions, review_due
 
 PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 HOME = os.path.expanduser("~")
@@ -297,15 +298,34 @@ def main():
     rows = sorted(agg.items(), key=lambda kv: kv[1]["last_days_ago"] or 0, reverse=True)
     flagged = [(s, a) for s, a in rows
                if is_cold(a, args.cold_days) or is_flaky(a) or is_failing(a)]
-    exceptions = [(s, a) for s, a in flagged if is_actionable(a["source"])]
+    actionable = [(s, a) for s, a in flagged if is_actionable(a["source"])]
     inert = [(s, a) for s, a in flagged if not is_actionable(a["source"])]
 
+    # 已裁决且未到复查日的，退出队列——否则「裁决完还在催」= 闭环没闭上，
+    # 通知会每周重复同一件事，最后被整体无视。
+    decided = latest_per_skill(load_decisions())
+    exceptions, settled = [], []
+    for name, a in actionable:
+        rec = decided.get(name)
+        if rec and not review_due(rec):
+            settled.append((name, a, rec))
+        else:
+            exceptions.append((name, a))
+
+    # 已裁决的资产名，**取自全部裁决**而非仅本轮标记项：一个「keep、按需调用」的资产
+    # 迟早会滑出时间窗口，那时它已不在 agg 里，若只从标记项取就漏掉它。
+    settled_names = {n for n, r in decided.items() if not review_due(r)}
+
     prev = load_last_snapshot(args.snapshot) if args.snapshot else None
-    vanished = []
+    vanished, vanished_muted = [], []
     # 仅在同窗口下对比：窗口不同则「退出」只是口径差异，不是信号
     if prev and prev.get("days") == args.days:
         prev_assets = prev.get("assets") or {}
-        vanished = sorted(set(prev_assets) - set(agg))
+        for name in sorted(set(prev_assets) - set(agg)):
+            # 已裁决的资产滑出窗口不是新闻——尤其「keep、按需调用」的，滑出是**预期**
+            # （panel 实测：裁决时 28 天未用，次周必滑出 → 否则通知会为一件已决定的事
+            # 反复响）。要定期重新审视请用 --ttl，那是它的职责。
+            (vanished_muted if name in settled_names else vanished).append(name)
 
     if args.snapshot:
         save_snapshot(args.snapshot, args.days, args.cold_days, agg)
@@ -349,6 +369,8 @@ def main():
         if not exceptions:
             print(f"无可裁决例外（窗口 {args.days} 天内有 {len(agg)} 个资产在用；"
                   f"扫描根 {args.root}）。")
+            if settled:
+                print(f"（{len(settled)} 个已被标记但**已裁决**，不再催办）")
         else:
             print(f"例外队列（冷门≥{args.cold_days}天 或 高重试 或 高失败；"
                   f"窗口 {args.days} 天）—— 只列**你能裁决的**资产：\n")
@@ -356,6 +378,12 @@ def main():
             print(TABLE_RULE)
             for name, a in exceptions:
                 print(row_line(name, a, args.cold_days))
+        if settled:
+            # 让「裁决生效了」可见——否则用户不知道自己那笔裁决有没有起作用
+            print(f"\n已裁决，退出队列（不再催办）：")
+            for name, _a, rec in settled:
+                extra = f"，复查日 {rec['ttl']}" if rec.get("ttl") else ""
+                print(f"  - {name}（{rec.get('action')}{extra}：{rec.get('reason', '')}）")
         if inert:
             # 内置与别人的 marketplace 不是你的库，不能悄悄吞掉——列出来但标明无需裁决。
             # 必须连扫描根一起报：项目若在根之外，会被归为「内置」而静默排除出队列，
@@ -368,6 +396,9 @@ def main():
             print(f"\n⚠️ 退出窗口：{', '.join(vanished)}"
                   f"（上轮在窗口内、本轮已滑出——可能是真冷门，也可能是记录过期，"
                   f"两者从此处起无法区分，判冷门前先查源是否还在）")
+        if vanished_muted:
+            print(f"\n（{len(vanished_muted)} 个已裁决资产滑出窗口，已静音："
+                  f"{'、'.join(vanished_muted)}——滑出对它们不是新闻）")
         if exceptions:
             print("\n裁决（决定后执行；keep 可加 --ttl YYYY-MM-DD 到期重回队列）：")
             for name, _a in exceptions:
@@ -392,11 +423,17 @@ def main():
         print(f"\n⚠️ 例外队列（需人裁决）：{len(exceptions)} 个")
         for name, a in exceptions:
             print(f"  - {name}（{short_source(a['source'])}，{row_tags(a, args.cold_days)}）")
+    if settled:
+        names = "、".join(f"{n}（{r.get('action')}）" for n, _a, r in settled)
+        print(f"\n✅ 已裁决、退出队列：{len(settled)} 个 —— {names}")
     if inert:
         print(f"\nℹ️ 非本库资产（内置 / 别人的 marketplace，无需裁决）：{len(inert)} 个 —— "
               f"{'、'.join(n for n, _ in inert)}")
     if vanished:
         print(f"\n⚠️ 退出窗口：{', '.join(vanished)}")
+    if vanished_muted:
+        print(f"\n（{len(vanished_muted)} 个已裁决资产滑出窗口，已静音："
+              f"{'、'.join(vanished_muted)}）")
 
 
 if __name__ == "__main__":

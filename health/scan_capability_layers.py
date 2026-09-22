@@ -30,6 +30,7 @@ from collections import defaultdict
 
 from asset_inventory import (HOME, MARKETPLACES, collect_assets,
                              find_project_claude_dirs, repo_identity)
+from decision_log import latest_per_skill, load_decisions, review_due
 
 
 def collect_shared():
@@ -84,9 +85,21 @@ def main():
         })
     candidates.sort(key=lambda c: (-c["projects"], c["name"]))
 
+    # 已裁决的候选退出队列（与用量侧同构）——否则「决定完了还在催」，通知每周重复。
+    # 注：promote（决定上移）是**有执行动作**的裁决，实际搬完之前候选不会自动消失，
+    # 故它虽不再进通知，仍单独列出并标注「待执行」，避免搬运动作被遗忘。
+    decided = latest_per_skill(load_decisions())
+    open_c, settled_c = [], []
+    for c in candidates:
+        rec = decided.get(c["name"])
+        if rec and not review_due(rec):
+            settled_c.append((c, rec))
+        else:
+            open_c.append(c)
+
     # 一行摘要：通知横幅宽度有限，塞表格原文只会变成噪声
-    brief = ("无晋升候选" if not candidates else
-             f"{len(candidates)} 个晋升候选：{'、'.join(c['name'] for c in candidates)}")
+    brief = ("无晋升候选" if not open_c else
+             f"{len(open_c)} 个晋升候选：{'、'.join(c['name'] for c in open_c)}")
 
     if args.brief_file:
         with open(args.brief_file, "w", encoding="utf-8") as f:
@@ -105,16 +118,29 @@ def main():
     print(f"共享层能力：{len(shared)} 个（已装 marketplace 载荷）\n")
     if not candidates:
         print("无晋升候选：项目层没有跨项目重复的能力。")
+        if settled_c:
+            print(f"（{len(settled_c)} 个曾报候选但**已裁决**）")
         return
-    print(f"⚠️ 晋升候选（{len(candidates)} 个）：项目层跨多个项目重复、共享层缺位\n")
-    print(f"{'能力':<28} {'类型':<6} {'项目数':>5} {'状态':<14} 位置")
-    print("-" * 96)
-    for c in candidates:
-        print(f"{c['name']:<28} {c['kind']:<6} {c['projects']:>5} {c['state']:<14} "
-              f"{', '.join(c['where'])}")
+    if open_c:
+        print(f"⚠️ 晋升候选（{len(open_c)} 个）：项目层跨多个项目重复、共享层缺位\n")
+        print(f"{'能力':<28} {'类型':<6} {'项目数':>5} {'状态':<14} 位置")
+        print("-" * 96)
+        for c in open_c:
+            print(f"{c['name']:<28} {c['kind']:<6} {c['projects']:>5} {c['state']:<14} "
+                  f"{', '.join(c['where'])}")
+        print("\n裁决（决定后执行）：")
+        for c in open_c:
+            print(f"  python3 ~/.claude/scripts/decision_log.py record "
+                  f"--skill {c['name']} --action promote|hold --reason \"…\"")
+        print("  promote=上移共享层｜hold=保持本地（可加 --ttl YYYY-MM-DD 到期重回队列）")
+    else:
+        print("无未裁决的晋升候选。")
+    if settled_c:
+        print(f"\n已裁决，退出队列（不再催办）：")
+        for c, rec in settled_c:
+            todo = "　⚠️ 待执行：上移到共享层" if rec.get("action") == "promote" else ""
+            print(f"  - {c['name']}（{rec.get('action')}：{rec.get('reason', '')}）{todo}")
     print("\n注：只 flag，不动作。去语境化是语义动作，由人裁决后手工上移（设计文档 §4.4）。")
-    print("⚠️ 落账通道未建：decision_log 的 --action 只有 keep|retire，承载不了「上移」，"
-          "故这些候选**无处落裁决**。见 health/BACKLOG.md 第 1 项（含触发条件）。")
 
 
 if __name__ == "__main__":

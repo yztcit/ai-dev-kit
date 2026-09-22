@@ -1,3 +1,7 @@
+# Python 编译产物
+__pycache__/
+*.pyc
+
 # 巡检报告与快照：派生自本机转录（机器特定、每周重生成、噪声大）→ 不共享
 report/*
 !report/.gitkeep

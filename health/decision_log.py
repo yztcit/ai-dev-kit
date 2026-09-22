@@ -8,7 +8,8 @@
 schema（每条一条 JSON）:
 {
   "skill": "gen-commit",          # 哪个 skill/agent
-  "action": "keep" | "retire",     # 裁决方向
+  "action": "keep" | "retire"      # 用量侧：留着 / 下架
+          | "promote" | "hold",    # 放置侧：上移共享 / 保持本地
   "override": false,               # 是否 override 评测结论
   "reason": "特殊场景需暂留",       # 为什么
   "scenario_tag": "xx机型兼容",    # 可选，override keep 时的场景标签
@@ -33,12 +34,24 @@ REPORT_DIR = os.path.join(_REPO_HEALTH_DIR, "report")
 LOG_PATH = os.path.join(REPORT_DIR, "skill-decisions.jsonl")
 DEFAULT_BY = os.environ.get("USER", "unknown")
 
+# 两个维度共用一份日志（都是「对某个资产的人工判断 + 理由」），动作词表按问题类型分：
+#   用量侧：keep（留着）/ retire（下架）
+#   放置侧：promote（上移共享）/ hold（保持本地）
+# 保留类动作可带 ttl，到期重回队列；终结类动作（retire / promote）不再催办。
+RETAIN_ACTIONS = {"keep", "hold"}
+ACTIONS = ("keep", "retire", "promote", "hold")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
 def _load():
+    return load_decisions()
+
+
+def load_decisions():
+    """读全部裁决（按追加序 = 时间序）。公开给巡检脚本共用，避免两处各解析一遍。"""
     if not os.path.exists(LOG_PATH):
         return []
     rows = []
@@ -51,6 +64,35 @@ def _load():
                 except json.JSONDecodeError:
                     continue
     return rows
+
+
+def latest_per_skill(decisions):
+    """{资产名: 最近一条裁决}。同一资产可有多次裁决，追加序即时间序，后者胜。"""
+    out = {}
+    for r in decisions:
+        if r.get("skill"):
+            out[r["skill"]] = r
+    return out
+
+
+def review_due(rec, today=None):
+    """该裁决是否已到「需重新审视」的时候。
+
+    只有「保留类」动作（keep / hold）+ 有 ttl + ttl 已到 → True（重回队列）。
+    其余（retire / promote / 无 ttl / ttl 未到）→ False，即**不该再催办**。
+    """
+    ttl = rec.get("ttl")
+    if rec.get("action") not in RETAIN_ACTIONS or not ttl:
+        return False
+    try:
+        return date.fromisoformat(ttl) <= (today or date.today())
+    except ValueError:
+        return False
+
+
+def settled(rec, today=None):
+    """这条裁决是否已经「了结」——了结 = 不该再出现在待裁决队列里。"""
+    return not review_due(rec, today)
 
 
 def record(args):
@@ -89,13 +131,9 @@ def due(args):
     """列出 keep 且 ttl 已到期的决策，这些需要重新审视（重入例外队列）。"""
     today = date.today()
     rows = _load()
-    due_rows = []
-    for r in rows:
-        ttl = r.get("ttl")
-        if not ttl or r.get("action") != "keep":
-            continue
-        if date.fromisoformat(ttl) <= today:
-            due_rows.append(r)
+    # 只看每个资产的**最近一条**裁决：否则「先 keep（ttl 过期）后 retire」的资产
+    # 会被旧记录一直拉回队列
+    due_rows = [r for r in latest_per_skill(rows).values() if review_due(r, today)]
     if not due_rows:
         print("无到期的 keep 决策。")
         return
@@ -111,7 +149,8 @@ def main():
 
     p_rec = sub.add_parser("record")
     p_rec.add_argument("--skill", required=True)
-    p_rec.add_argument("--action", required=True, choices=["keep", "retire"])
+    p_rec.add_argument("--action", required=True, choices=list(ACTIONS),
+                       help="keep/retire（用量侧：留/下架）｜promote/hold（放置侧：上移/保持本地）")
     p_rec.add_argument("--reason", required=True)
     p_rec.add_argument("--override", action="store_true", default=False)
     p_rec.add_argument("--scenario-tag")

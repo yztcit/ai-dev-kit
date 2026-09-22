@@ -9,18 +9,7 @@
 >
 > 最后更新：2026-09-22
 
-## 1. 晋升候选没有落账通道
-
-- **现象**：`scan_capability_layers.py` 每周检出「跨项目重复、共享层缺位」的能力（当前 6 个），
-  但 `decision_log.py` 的 `--action` 只有 `{keep, retire}`——语义是"留/下架"，
-  **承载不了"上移"**。所以候选被检出了，却没有地方落裁决。
-- **为什么现在不做**：裁决的人类那一端尚未验证过——上线以来 **0 条记录**。
-  在第一个落账通道被真实使用过之前再加第二个，是把未经检验的模式复制一份（提前造抽象）。
-- **触发条件**：`decision_log.py` 落过第一笔真实裁决之后（`list` 非空），
-  按同一模式给放置侧加 action（如上移 / 保持本地）或独立子命令。
-- **证据在哪**：`scan_capability_layers.py` 输出；本文件同目录的巡检报告。
-
-## 2. 设计文档未纳入版本控制
+## 1. 设计文档未纳入版本控制
 
 - **现象**：本体系最完整的推理（三层划分、市场对齐、为何这样取舍、v7 全部实测结论）
   写在 `projects/lui/znxx_pad_aivoice/.claude/plans/claude-plugin-lifecycle.md`——
@@ -31,7 +20,7 @@
   届时抽出去语境化的部分进本仓库（如 `health/DESIGN.md`），保留完整版在计划文件。
 - **证据在哪**：上述路径；本仓库 README 与各脚本注释是它的摘要。
 
-## 3. Windows 无通知、无调度
+## 2. Windows 无通知、无调度
 
 - **现象**：三个 Python 脚本跨平台，但 `install.sh`（launchd）与 `skill-health-check.sh`（osascript）
   是 macOS 专有。Windows 用户只能手动跑脚本，收不到通知、也没有自动巡检。
@@ -41,7 +30,7 @@
   交付物：`skill-health-check.ps1` + 一次性计划任务注册，需在 Windows 上实跑确认。
 - **证据在哪**：README「平台边界」表。
 
-## 4. 流水线 B：回归门禁（防退化）
+## 3. 流水线 B：回归门禁（防退化）
 
 - **现象**：没有任何"谁做得好"的度量。用量侧只能回答"谁没人用"，
   驱动得了**退役**，驱动不了**改进**。
@@ -53,7 +42,7 @@
   或某个 skill/agent 出现重复性失败（`scan_skill_usage.py` 的失败列非零且成簇）。
 - **证据在哪**：设计文档 §4.2 流水线 B；`scan_skill_usage.py` 的 `failures` 列（现已接通，当前全 0）。
 
-## 5. 流水线 C：漂移检测
+## 4. 流水线 C：漂移检测
 
 - **现象**：官方 marketplace 或依赖（graphify）大版本更新时，没有任何自动检测，
   全靠人"想起来去看"。
@@ -62,7 +51,7 @@
   graphify 命令变更导致 `graphify-search` 失效）。
 - **证据在哪**：设计文档 §4.3。
 
-## 6. 决策日志按「资产所属层」拆分
+## 5. 决策日志按「资产所属层」拆分
 
 - **现象**：决策日志现已共享（`report/skill-decisions.jsonl` 单独放行 + `merge=union`），
   但团队层资产的裁决与项目层资产的裁决混在同一个文件里。
@@ -71,7 +60,7 @@
   （如裁决涉及某项目的内部信息）。届时按层拆分：团队层进共享、项目层留项目内。
 - **证据在哪**：`health/.gitignore` 与 `.gitattributes` 的注释；设计文档 §十一。
 
-## 7. `update-plugins.ps1` 未经验证
+## 6. `update-plugins.ps1` 未经验证
 
 - **现象**：`claude_plugins` 的 `update-plugins.ps1` 与 `.sh` 逻辑等价（内容指纹判定
   + 只处理已安装 scope），但**从未在 PowerShell 里跑过**。
@@ -88,3 +77,10 @@
 - `projects/znxx_pad_aivoice` 与 `projects/lui/znxx_pad_aivoice` 是同一仓库的两份检出
   （分支不同：`develop` / `demo/ai_eyes_260807`）→ 分层扫描已用 git remote 归并，
   但目录本身重复。
+
+## 已完成（留档，勿重复做）
+
+- **晋升候选落账通道**（2026-09-22 接入）。原条目：候选被检出却无处落裁决——`decision_log`
+  的 `--action` 只有 `keep|retire`，承载不了「上移」。触发条件是「落过第一笔真实裁决」，
+  该条件成立后即接入：`--action` 扩为 `keep|retire|promote|hold`（放置侧用 promote/hold），
+  两个扫描器都改为**先查裁决再入队**（已裁决的退出队列，ttl 到期才重回）。
