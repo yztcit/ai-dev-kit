@@ -1,29 +1,26 @@
 #!/usr/bin/env python3
 """决策日志：人看数据做裁决，双向可 override，形成闭环。
 
-**按判断的作用域存放，不按资产所属层存放**：
+**全部存本机，工具不往任何仓库写**：
 
-    项目层资产（本机使用判断） → ~/.claude/health-decisions.jsonl   ← 不进任何项目
-    团队层资产（对共享能力的立场）→ <团队仓库>/.claude/health-decisions.jsonl
-    公共层资产（对共享能力的立场）→ 本仓库 .claude/health-decisions.jsonl
+    ~/.claude/health-decisions.jsonl
 
-**为什么项目层判断不进项目**：业务项目不该承载工具状态——那是"哪个 skill 冷门"
-这类本机账，混进业务仓库只会变成 `git status` 噪声，甚至进业务 git 历史。
-本工具自己的既定模式就是「输出不过仓库」（报告与快照都写在 gitignore 的 report/），
-决策日志不该破例。
+四条事实支撑这个选择：
 
-**为什么共享层判断仍进对应仓库**：那是**对共享能力的立场**（"这个 skill 是按需调用，
-别下架"），换个人、换台机器跑同一个工具时用得上，属于该层的能力定义的一部分。
-顺带，公共仓库因此**天然不含业务语境**（项目层判断根本不会流进去）。
+1. **与工具自己的既定原则一致**——报告与快照都写在 gitignore 的 `report/` 下
+   （「输出不过仓库」），决策日志没理由破例。
+2. **它抑制的噪声是本机的**——触发来自本机转录，别的机器转录不同、报的东西也不同。
+3. **写进共享仓库有真实的正确性问题**——两人各自对同一资产记录决策，`union` 合并后
+   `latest_per_skill` 取"最后一条"，而两台机器的追加顺序**没有意义**（谁先写取决于
+   时钟），"最新"是任意的。
+4. **变更理由本就该写在那个变更的 commit 里**——人执行 retire/promote 时会提交到
+   对应仓库；再往工具状态文件存一份 = 第二份表示。
 
-读取是**跨作用域聚合**的：`list` / `due` / 两个扫描器都读全部（用户级 + 各层仓库），
-所以你看得到所有裁决。
+补充：动作会**自我了结**。真把某个 skill 从插件退役后，它就不在扫描范围内，任何机器
+都不再报它。本文件里的那条决策只是「已决定、未执行」的中间态——所以它只需要本机可见。
 
-团队层的仓库路径写在用户级配置 `~/.claude/health-layers.json`（机器特定，不进任何仓库）：
-
-    {"marketplaces": {"<marketplace 名>": "<该层仓库的本地检出路径>"}}
-
-未配置的 marketplace 会被拒绝写入并提示——宁可不写，也不写错地方。
+内置与外部 marketplace 的资产**拒绝写入**：它们不出现在待裁决队列里，为其记录决策
+没有意义（也避免"以为裁过了"的错觉）。
 
 schema（每条一条 JSON）:
 {
@@ -47,16 +44,13 @@ import json
 import os
 from datetime import datetime, date, timezone
 
-from asset_inventory import (BUILTIN, EXTERNAL_MARKETPLACES, PUBLIC_MARKETPLACE,
-                             REPO_ROOT, build_source_map, classify)
+from asset_inventory import (BUILTIN, EXTERNAL_MARKETPLACES, build_source_map,
+                             classify)
 LOG_NAME = "health-decisions.jsonl"
 DEFAULT_BY = os.environ.get("USER", "unknown")
 
-# 项目层判断的本机落点（不进任何项目仓库）
+# 决策日志的唯一落点（本机；工具不往任何仓库写）
 USER_LOG = os.path.join(os.path.expanduser("~"), ".claude", LOG_NAME)
-
-# 团队层的本地仓库路径（机器特定 → 放用户级，不进任何仓库）
-LAYER_CONFIG = os.path.join(os.path.expanduser("~"), ".claude", "health-layers.json")
 DEFAULT_SCAN_ROOT = os.path.join(os.path.expanduser("~"), "workspace")
 
 # 两个维度共用一份日志（都是「对某个资产的人工判断 + 理由」），动作词表按问题类型分：
@@ -71,73 +65,18 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def log_path(layer_root: str) -> str:
-    """任一层的决策文件路径。全层统一 <层根>/.claude/health-decisions.jsonl。"""
-    return os.path.join(layer_root, ".claude", LOG_NAME)
+def resolve_log_for(source: str):
+    """决策写到哪 —— 只有本机一处；不可裁决的资产直接拒绝。
 
-
-def team_logs() -> dict:
-    """{marketplace 名: 该层决策文件路径}，来自用户级层配置。"""
-    try:
-        with open(LAYER_CONFIG, encoding="utf-8") as f:
-            cfg = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return {}
-    out = {}
-    for mkt, repo in (cfg.get("marketplaces") or {}).items():
-        if isinstance(repo, str) and repo:
-            out[mkt] = log_path(os.path.expanduser(repo))
-    return out
-
-
-def all_log_paths(from_projects: list = None) -> list:
-    """所有决策文件路径（跨作用域聚合读取用）。
-
-    只有三处：用户级（项目层判断）+ 各共享层仓库。项目目录**不参与**——
-    本工具不在业务项目里留任何文件。`from_projects` 仅供兼容旧布局的迁移使用。
-    """
-    paths = [USER_LOG, log_path(REPO_ROOT)]
-    paths += list(team_logs().values())
-    paths += list(from_projects or [])
-    return paths
-
-
-def resolve_log_for(source: str, root: str = None):
-    """按资产所属层决定这条决策该写到哪。
-
-    返回 (路径, 层描述) 或 (None, 拒绝原因)。拒绝时不写——宁可不记，
-    也不把业务语境写进与之无关的层。
+    调用方只需知道「能不能记、记哪」；存放位置不再有分支，故这个函数只做准入判断。
     """
     if not source or source == BUILTIN:
-        return None, "内置资产（磁盘上无对应文件），不属于任何层"
+        return None, "内置资产（磁盘上无对应文件），不在待裁决队列里"
     parts = source.split("+")
-    # 项目层判断写用户级——**不进项目仓库**：那是本机使用判断，业务项目不该承载
-    # 工具状态（会成为 git status 噪声，甚至进业务 git 历史）
-    for p in parts:
-        if p.startswith("project:"):
-            return USER_LOG, "本机（项目层资产的使用判断）"
-    # 同名资产可能同时在多处存在（实测：code-reviewer 官方与团队都有），
-    # 故先找**能落地的层**，别取到第一个（外部 marketplace）就拒绝。
-    teams = team_logs()
-    unconfigured = []
-    for p in parts:
-        if p.startswith("plugin:"):
-            mkt = p.split(":", 1)[1]
-            if mkt == PUBLIC_MARKETPLACE:
-                return log_path(REPO_ROOT), f"公共层（{mkt}）"
-            if mkt in teams:
-                return teams[mkt], f"团队层（{mkt}）"
-            unconfigured.append(mkt)
-    if unconfigured:
-        own = [m for m in unconfigured if m not in EXTERNAL_MARKETPLACES]
-        if own:
-            m = own[0]
-            return None, (f"marketplace '{m}' 未配置本地仓库路径。"
-                          f"请在 {LAYER_CONFIG} 里登记该层仓库后重试"
-                          f"（形如 {{\"marketplaces\": {{\"{m}\": \"/path/to/repo\"}}}}）")
-        return None, (f"只存在于外部 marketplace（{'、'.join(unconfigured)}），"
-                      f"不属于你的任何层")
-    return None, f"无法归类到任何层：{source}"
+    if all(p.startswith("plugin:") and p.split(":", 1)[1] in EXTERNAL_MARKETPLACES
+           for p in parts):
+        return None, f"只存在于外部 marketplace（{'、'.join(parts)}），不是你的资产"
+    return USER_LOG, "本机"
 
 
 def _read(path: str) -> list:
@@ -157,11 +96,8 @@ def _read(path: str) -> list:
 
 
 def load_decisions() -> list:
-    """跨作用域聚合读取全部裁决（用户级 + 各共享层仓库）。"""
-    rows = []
-    for p in all_log_paths():
-        rows += _read(p)
-    return rows
+    """读取全部裁决。只有本机一处——工具不往任何仓库写。"""
+    return _read(USER_LOG)
 
 
 def latest_per_skill(decisions):
@@ -188,11 +124,6 @@ def review_due(rec, today=None):
         return False
 
 
-def settled(rec, today=None):
-    """这条裁决是否已经「了结」——了结 = 不该再出现在待裁决队列里。"""
-    return not review_due(rec, today)
-
-
 def record(args):
     root = getattr(args, "root", None) or DEFAULT_SCAN_ROOT
     sources = build_source_map(root)
@@ -205,10 +136,10 @@ def record(args):
         alt = classify((other, args.skill), sources)
         if alt != BUILTIN:
             kind, source = other, alt
-    path, desc = resolve_log_for(source, root)
+    path, desc = resolve_log_for(source)
     if path is None:
         print(f"✘ 拒绝写入：{args.skill} —— {desc}")
-        print("  （判断按作用域存放：项目层→本机，共享层→该层仓库；无归属就不记）")
+        print("  （只记你自己资产的判断，且只存本机）")
         return 1
     rec = {
         "skill": args.skill,
@@ -224,7 +155,7 @@ def record(args):
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     print(f"已记录裁决：{rec['skill']} -> {rec['action']} (override={rec['override']})")
-    print(f"  写入层：{desc}")
+    print(f"  落点：{desc}")
     print(f"  文件：{path}")
     return 0
 

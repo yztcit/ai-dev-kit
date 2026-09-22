@@ -5,7 +5,5 @@ __pycache__/
 # 巡检报告与快照：派生自本机转录（机器特定、每周重生成、噪声大）→ 不共享
 report/*
 
-# 注意：决策日志**不在**这里——它按判断的作用域存放（见 decision_log.py）：
-#   项目层资产 → ~/.claude/health-decisions.jsonl（本机，不进任何项目）
-#   团队/公共层资产 → 对应仓库 .claude/health-decisions.jsonl（对共享能力的立场）
-# 这样公共仓库天然不含业务语境，业务项目也不承载工具状态。
+# 注意：决策日志**不在**这里，也不在任何仓库里——它是本机工具状态，
+# 落在 ~/.claude/health-decisions.jsonl（见 decision_log.py 顶部说明）。
