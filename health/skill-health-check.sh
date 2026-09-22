@@ -34,7 +34,7 @@ layers=$(python3 "$LAYERS" --brief-file "$BRIEF.layers" 2>&1)
 layers_brief=$(cat "$BRIEF.layers" 2>/dev/null)
 
 {
-  echo "=== $(date '+%Y-%m-%d %H:%M') 例外队列 ==="
+  echo "=== $(date '+%Y-%m-%d %H:%M') 巡检（用量侧 + 放置侧）==="
   echo "$output"
   echo ""
   echo "$layers"
