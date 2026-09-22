@@ -189,6 +189,8 @@ python3 ~/.claude/scripts/decision_log.py due     # ttl 到期的 keep，需重�
 - 团队层的仓库路径写在用户级配置 `~/.claude/health-layers.json`（机器特定，不进任何仓库）：`{"marketplaces": {"<marketplace 名>": "<该层仓库路径>"}}`。未配置的 marketplace 会被**拒绝写入并提示**——宁可不记，也不写错层。
 - 决策日志是 append-only JSONL，每行自带 `decided_at` 与 `by`，故配 `merge=union`（见仓库根 `.gitattributes`）——两人各自追加时两边都不丢行。它**是共享的**（人工判断，低频高价值，换设备/换人不该从零重新裁决）；巡检报告与快照**不共享**（`health/report/*`，派生自本机转录，机器特定、每周重生成）。
 
+> **已知边界（勿当 bug）**：一个能力**跨多个项目重复**时（这正是「晋升候选」的定义），决策只会落到其中一个项目（按路径排序取首个），从另一个项目的目录里看不到它。工具**跨层聚合读取**，所以闭环与队列判定不受影响；只是"宿主项目"带任意性。真要精确表达"这条决策适用于 A 与 B 两个项目"，需要给记录加 scope 字段——等出现实际误读再加。
+
 > 巡检报告的每个例外下面会直接列出对应的 `record` 命令行，照抄改 `action` / `reason` 即可。
 
 ### 放置侧：晋升候选（`scan_capability_layers.py`）

@@ -59,11 +59,15 @@ notify() {
   return 0
 }
 
-# 优先级：需裁决的例外 > 晋升候选 > 退出窗口；「无例外」「无数据」静默
-if printf '%s' "$usage_brief" | grep -q '待裁决'; then
+# 优先级：需裁决的例外 > 晋升候选 > 退出窗口；「无例外」「无数据」「无晋升候选」静默
+#
+# 判定必须匹配**数量前缀**（`^N 个…`），不能只匹配「待裁决」「晋升候选」「退出窗口」
+# 这几个词——摘要里「**无**待裁决；N 个退出窗口」「**无**晋升候选」都含这些词，
+# 只匹配词会让队列为空时照样弹通知（实测踩过：两个队列都空，通知照弹）。
+if printf '%s' "$usage_brief" | grep -qE '^[0-9]+ 个待裁决'; then
   notify "Skill 健康巡检：需裁决" "$usage_brief"
-elif printf '%s' "$layers_brief" | grep -q '晋升候选'; then
+elif printf '%s' "$layers_brief" | grep -qE '^[0-9]+ 个晋升候选'; then
   notify "能力分层巡检：晋升候选" "$layers_brief"
-elif printf '%s' "$usage_brief" | grep -q '退出窗口'; then
+elif printf '%s' "$usage_brief" | grep -qE '[0-9]+ 个退出窗口'; then
   notify "Skill 健康巡检：资产退出窗口" "$usage_brief"
 fi
