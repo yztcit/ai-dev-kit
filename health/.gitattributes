@@ -1,0 +1,3 @@
+# 决策日志是 append-only JSONL：两人各自追加时用 union 合并，保证两边都不丢行
+# （每行自带 decided_at 与 by，顺序无关紧要，故 union 是安全的）
+report/skill-decisions.jsonl merge=union

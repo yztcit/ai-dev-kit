@@ -34,7 +34,7 @@
 
 - `scan_skill_usage.py` — 转录解析（用量侧），产出调用统计 + 例外队列 + 窗口报告
 - `scan_capability_layers.py` — 能力分层扫描（放置侧），产出晋升候选
-- `decision_log.py` — 决策日志（双向 override + ttl 重入队列）
+- `decision_log.py` — 决策日志（人裁决落账 + 双向 override + ttl 重入队列）
 - `skill-health-check.sh` — 巡检入口，有例外/晋升候选弹 macOS 通知
 - `install.sh` — 幂等安装器，软链脚本 + 注册 launchd 定时任务（周一 09:15）
 
@@ -58,6 +58,54 @@ Skill（`name:"Skill"`）与 Agent（`name:"Agent"|"Task"` 的 `subagent_type`�
 源转录只有约 30 天寿命，窗口内证据会持续流失。`--snapshot FILE` 把每轮聚合追加成 append-only JSONL（默认 `report/skill-usage-history.jsonl`，gitignore），使时间序列不随源过期而丢失；并与上一轮对比报出**退出窗口**的资产。仅在窗口一致时对比——窗口不同则「退出」只是口径差异，不是信号。
 
 > 退出窗口的语义是**中性**的：既可能是真冷门，也可能是记录刚好过期。这正是必须显式报出来的原因——把两者都读成「无例外」，就是假阴性。
+
+### 裁决怎么用（`decision_log.py`）
+
+自动化只 flag，动作永远是人——但必须带理由与时效，并记成决策日志（**决策本身也是数据**）。命令入口 `~/.claude/scripts/decision_log.py`（软链到本仓库 `health/decision_log.py`）。
+
+| 子命令 | 用途 |
+|---|---|
+| `record` | 落一条裁决（唯一会写盘的） |
+| `list` | 看已有裁决（只读） |
+| `due` | 列出 ttl 到期、需重新审视的 keep（只读） |
+
+`record` 的参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `--skill` | ✅ | 资产名，即例外队列里的那个名字 |
+| `--action {keep,retire}` | ✅ | 留着 / 下架 |
+| `--reason` | ✅ | 为什么。写清楚——它是下次复查时唯一的上下文 |
+| `--override` | | 标记这是**推翻**评测结论的人工判断 |
+| `--scenario-tag` | | override keep 时标注场景（如「某机型兼容」） |
+| `--ttl YYYY-MM-DD` | | 仅 keep 生效：到期自动重回例外队列，避免「暂留变永久」 |
+| `--by` | | 默认取 `$USER` |
+
+两个方向都要记：
+
+```bash
+# 评测报冷门，但你知道它是按需调用 → keep，并定复查日期
+python3 ~/.claude/scripts/decision_log.py record \
+  --skill panel --action keep --reason "评审类 skill，按需调用不是冷门" --ttl 2026-12-31
+
+# 评测还行，但你判断该下架 → retire + override（理由回灌评测，修正盲区）
+python3 ~/.claude/scripts/decision_log.py record \
+  --skill xxx --action retire --override --reason "与官方同类重复，我们的版本无增量"
+```
+
+复查：
+
+```bash
+python3 ~/.claude/scripts/decision_log.py list    # 全部裁决
+python3 ~/.claude/scripts/decision_log.py due     # ttl 到期的 keep，需重新审视
+```
+
+**落盘与共享范围**：`health/report/skill-decisions.jsonl`
+
+- **决策日志共享**（`.gitignore` 里单独放行 `!report/skill-decisions.jsonl`）。它是**人工判断**，不是遥测：低频、高价值、append-only，换设备/换人不该从零重新裁决一遍。每行自带 `decided_at` 与 `by`，故配 `merge=union`（见 `health/.gitattributes`）——两人各自追加时两边都不丢行。
+- **巡检报告与快照不共享**（`report/*`）：派生自本机转录，机器特定、每周重生成、噪声大。
+
+> 巡检报告的每个例外下面会直接列出对应的 `record` 命令行，照抄改 `action` / `reason` 即可。
 
 ### 放置侧：晋升候选（`scan_capability_layers.py`）
 
@@ -84,5 +132,5 @@ Skill（`name:"Skill"`）与 Agent（`name:"Agent"|"Task"` 的 `subagent_type`�
 ## 当前状态
 
 - `plugins/video` 已落地：`video-pe` 视频生成请求整理。
-- `health/` 已落地（流水线 A），报告与决策日志写入 `health/report/`（gitignore，本地可见）。覆盖已从「仅 Skill」扩到「Skill + Agent」，并补齐失败信号与快照。
+- `health/` 已落地（流水线 A），产出写入 `health/report/`。**其中决策日志 `skill-decisions.jsonl` 共享**（人工判断，跨设备/跨人累积），巡检报告与快照不共享（派生自本机转录）。覆盖已从「仅 Skill」扩到「Skill + Agent」，并补齐失败信号、快照与晋升候选检测。
 - **未落地**：流水线 B（回归门禁，judge 打分 + 冻结基线）、流水线 C（官方/依赖漂移检测）。B 是唯一能产出「更好」的环节——A 只能告诉谁没人用，说不出谁做得好。
