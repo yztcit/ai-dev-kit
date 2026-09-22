@@ -32,6 +32,9 @@
 
 `health/` 是一套跨项目通用的健康巡检工具，通过解析本地会话转录（`~/.claude/projects/<项目>/*.jsonl`）算出每个**资产**（Skill 与 Agent）的冷门度/调用次数/重试率/失败次数，产出「例外队列」供人裁决，替代人工例行巡检。
 
+> **未接入项见 [`health/BACKLOG.md`](health/BACKLOG.md)** —— 每项带**触发条件**（不是日期）。
+> 不要定期通读；当某项的触发条件出现时再动手。
+
 - `scan_skill_usage.py` — 转录解析（用量侧），产出调用统计 + 例外队列 + 窗口报告
 - `scan_capability_layers.py` — 能力分层扫描（放置侧），产出晋升候选
 - `decision_log.py` — 决策日志（人裁决落账 + 双向 override + ttl 重入队列）

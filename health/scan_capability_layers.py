@@ -162,7 +162,9 @@ def main():
     for c in candidates:
         print(f"{c['name']:<28} {c['kind']:<6} {c['projects']:>5} {c['state']:<14} "
               f"{', '.join(c['where'])}")
-    print("\n注：只 flag，不动作。去语境化后由人裁决上移（设计文档 §4.4）。")
+    print("\n注：只 flag，不动作。去语境化是语义动作，由人裁决后手工上移（设计文档 §4.4）。")
+    print("⚠️ 落账通道未建：decision_log 的 --action 只有 keep|retire，承载不了「上移」，"
+          "故这些候选**无处落裁决**。见 health/BACKLOG.md 第 1 项（含触发条件）。")
 
 
 if __name__ == "__main__":
