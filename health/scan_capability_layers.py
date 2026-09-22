@@ -23,63 +23,13 @@
     共享层 = ~/.claude/plugins/marketplaces/*/plugins/*/{skills,agents}
 """
 import argparse
-import hashlib
 import json
 import os
-import re
 import subprocess
 from collections import defaultdict
 
-HOME = os.path.expanduser("~")
-MARKETPLACES = os.path.join(HOME, ".claude", "plugins", "marketplaces")
-SKIP_DIRS = {"node_modules", ".git", "dist", "build", "out", "target", ".venv", "vendor"}
-
-
-def find_project_claude_dirs(root):
-    """找出 root 下所有项目级 .claude 目录（跳过依赖/产物目录）。"""
-    found = []
-    for dirpath, dirnames, _files in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")
-                       or d == ".claude"]
-        if os.path.basename(dirpath) == ".claude":
-            found.append(dirpath)
-            dirnames[:] = []          # 不往 .claude 里面继续找
-    return found
-
-
-def collect_assets(base, prefix):
-    """从 <base>/{skills,agents} 收集 (kind, name) -> 内容哈希。"""
-    out = {}
-    for kind, pattern in (("skill", "skills"), ("agent", "agents")):
-        d = os.path.join(base, pattern)
-        if not os.path.isdir(d):
-            continue
-        if kind == "skill":
-            for sub in os.listdir(d):
-                f = os.path.join(d, sub, "SKILL.md")
-                if os.path.isfile(f):
-                    out[(kind, sub)] = file_hash(f)
-        else:
-            for fn in os.listdir(d):
-                if fn.endswith(".md"):
-                    out[(kind, fn[:-3])] = file_hash(os.path.join(d, fn))
-    return out
-
-
-def file_hash(path):
-    with open(path, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()[:8]
-
-
-def repo_identity(project_root):
-    """用 git remote 判断「同一个项目的多份副本」，避免把副本误算成两个项目。"""
-    try:
-        url = subprocess.run(
-            ["git", "-C", project_root, "config", "--get", "remote.origin.url"],
-            capture_output=True, text=True, timeout=5).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        url = ""
-    return url or os.path.realpath(project_root)
+from asset_inventory import (HOME, MARKETPLACES, collect_assets,
+                             find_project_claude_dirs, repo_identity)
 
 
 def collect_shared():
@@ -92,7 +42,7 @@ def collect_shared():
         if not os.path.isdir(plugins_dir):
             continue
         for plugin in os.listdir(plugins_dir):
-            shared |= set(collect_assets(os.path.join(plugins_dir, plugin), "").keys())
+            shared |= set(collect_assets(os.path.join(plugins_dir, plugin)).keys())
     return shared
 
 
@@ -112,7 +62,7 @@ def main():
     for claude_dir in find_project_claude_dirs(args.root):
         project_root = os.path.dirname(claude_dir)
         ident = repo_identity(project_root)
-        for key, h in collect_assets(claude_dir, "").items():
+        for key, h in collect_assets(claude_dir).items():
             seen[key][ident][h] = project_root
 
     shared = collect_shared()

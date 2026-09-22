@@ -51,6 +51,29 @@ Skill（`name:"Skill"`）与 Agent（`name:"Agent"|"Task"` 的 `subagent_type`�
 
 失败信号取自该次调用自身 `tool_result` 的 `is_error`（按 `tool_use_id` 关联），不统计调用内部执行的其他工具错误——否则「跑测试的 skill」会被错误地判成高失败。
 
+### 来源清点：例外队列只收「你能裁决的」
+
+转录里只记名字、不记出处，于是内置与别人的插件会和你的资产混在同一张表里。实测后果：4 项「需人裁决」里有 2 项根本裁决不了——
+
+| 资产 | 原始调用名 | 来源 | 能裁决吗 |
+|---|---|---|---|
+| `code-reviewer` | `dev:code-reviewer` | 你的插件 | ✅ |
+| `panel` / `craft` | 裸名 | 项目层 | ✅ |
+| `xpy-interact` / `agent-os` | 裸名 | 项目层 | ✅ |
+| `run` / `Explore` / `Plan` | 裸名 | **内置**（磁盘上无对应文件） | ❌ |
+| `frontend-design` | `frontend-design:frontend-design` | **官方 marketplace** | ❌ |
+
+`asset_inventory.py` 按**文件系统**判定来源（`plugin:<marketplace>` / `project:<路径>` / `builtin`），规则：
+
+- **例外队列只列 `project:*` 与自家的 `plugin:*`** —— 你去决定一件做不到的事，队列的可信度就没了。
+- **内置与外部 marketplace 单独列出、标注「无需裁决」** —— 不悄悄吞掉，但不占用你的决策。
+- `is_actionable()` 里 `EXTERNAL_MARKETPLACES` 默认只含 `claude-plugins-official`；自家/团队的 marketplace 一律视为可裁决。
+
+**两个已知边界（勿当 bug）**：
+
+1. **同名跨源无法分辨**。官方市场的 `feature-dev` 与团队 `dev` 插件**都有** `code-reviewer` → 该资产标为 `插件:claude-plugins-official+插件:tal-tools`。这是诚实输出：名字本身不足以定源。（转录里的前缀 `dev:` 本可区分，但裸名形式同样存在，故不假装能分辨。）多来源只要含一个自家来源即算可裁决。
+2. **项目若在扫描根之外，会被归为「内置」而静默排除出队列**。故输出里始终打印扫描根（`--root`，默认 `~/workspace`）——项目不在这个根下时先改它，否则你会看到一份「无例外」的假阴性。
+
 ### 两个配置不变量（改了会静默失效）
 
 1. **`--cold-days` 必须严格小于转录保留期**（Claude Code `cleanupPeriodDays`，默认 30 天）。等于或超过保留期时，资产在「够冷」之前记录就已被清理，冷门**永远判不出来**——报告会一直显示「无例外」，看起来健康，其实是没有数据。脚本检测到该配置会直接告警。

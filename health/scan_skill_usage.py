@@ -31,7 +31,48 @@ import os
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
+from asset_inventory import build_source_map, classify, is_actionable
+
 PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
+HOME = os.path.expanduser("~")
+
+
+def short_source(src):
+    """来源标注压短，便于进表格列。"""
+    if src == "builtin":
+        return "内置"
+    parts = []
+    for s in src.split("+"):
+        if s.startswith("plugin:"):
+            parts.append(f"插件:{s.split(':', 1)[1]}")
+        elif s.startswith("project:"):
+            parts.append(f"项目:{os.path.basename(s.split(':', 1)[1])}")
+        else:
+            parts.append(s)
+    return "+".join(parts)
+
+
+def row_tags(a, cold_days):
+    tags = []
+    if is_cold(a, cold_days):
+        tags.append("冷门")
+    if is_flaky(a):
+        tags.append("高重试")
+    if is_failing(a):
+        tags.append("高失败")
+    return ",".join(tags)
+
+
+def row_line(name, a, cold_days, with_tags=True):
+    return (f"{name:<22} {a['kind']:<6} {short_source(a['source']):<30} "
+            f"{a['count']:>4} {a['sessions']:>4} {a['retries']:>4} "
+            f"{a['failures']:>4} {a['last_days_ago']:>6}  "
+            f"{row_tags(a, cold_days) if with_tags else ''}")
+
+
+TABLE_HEAD = (f"{'资产':<22} {'类型':<6} {'来源':<30} {'调用':>4} {'会话':>4} "
+              f"{'重试':>4} {'失败':>4} {'最近':>6}  标记")
+TABLE_RULE = "-" * 100
 
 
 def parse_ts(s: str) -> datetime:
@@ -230,6 +271,8 @@ def main():
     ap.add_argument("--brief-file", metavar="FILE",
                     help="把一行摘要写到 FILE，供通知脚本用。与 --snapshot 同一次运行，"
                          "避免为了拿摘要而重跑扫描（重跑会让快照重复落盘）")
+    ap.add_argument("--root", default=os.path.join(HOME, "workspace"),
+                    help="项目扫描根目录，用于判定资产来源（默认 ~/workspace）")
     ap.add_argument("--snapshot", metavar="FILE",
                     help="把本轮聚合追加到 append-only 快照（使时间序列不随源过期丢失），"
                          "并与其最后一行对比报出「退出窗口」的资产")
@@ -243,9 +286,19 @@ def main():
               f"应取小于保留期（默认 30 天）的值，如 14。\n")
 
     agg = collect(args.days, args.retry_window_sec)
+
+    # 来源清点：例外队列只该收「你能裁决的」资产。内置（run / Explore / Plan）与
+    # 别人的 marketplace（官方插件）不是你的库，把它们排进「需人裁决」是让人去做
+    # 一件他做不到的事——队列里混进这种项，整份报告的可信度就没了。
+    sources = build_source_map(args.root)
+    for name, a in agg.items():
+        a["source"] = classify((a["kind"], name), sources)
+
     rows = sorted(agg.items(), key=lambda kv: kv[1]["last_days_ago"] or 0, reverse=True)
-    exceptions = [(s, a) for s, a in rows
-                  if is_cold(a, args.cold_days) or is_flaky(a) or is_failing(a)]
+    flagged = [(s, a) for s, a in rows
+               if is_cold(a, args.cold_days) or is_flaky(a) or is_failing(a)]
+    exceptions = [(s, a) for s, a in flagged if is_actionable(a["source"])]
+    inert = [(s, a) for s, a in flagged if not is_actionable(a["source"])]
 
     prev = load_last_snapshot(args.snapshot) if args.snapshot else None
     vanished = []
@@ -294,35 +347,34 @@ def main():
                   f"源转录仅保留约 30 天，更早的记录已清理）")
             return
         if not exceptions:
-            print(f"无例外（窗口 {args.days} 天内有 {len(agg)} 个资产在用，均正常）。")
-            if vanished:
-                print(f"⚠️ 退出窗口：{', '.join(vanished)}"
-                      f"（上轮在窗口内、本轮已滑出——可能是真冷门，也可能是记录过期，"
-                      f"两者从此处起无法区分，判冷门前先查源是否还在）")
-            return
-        print(f"例外队列（冷门≥{args.cold_days}天 或 高重试 或 高失败；窗口 {args.days} 天）：\n")
-        print(f"{'资产':<24} {'类型':<6} {'调用':>4} {'会话':>4} {'重试':>4} "
-              f"{'失败':>4} {'最近(天前)':>10}  {'标记'}")
-        print("-" * 80)
-        for name, a in exceptions:
-            tags = []
-            if is_cold(a, args.cold_days):
-                tags.append("冷门")
-            if is_flaky(a):
-                tags.append("高重试")
-            if is_failing(a):
-                tags.append("高失败")
-            print(f"{name:<24} {a['kind']:<6} {a['count']:>4} {a['sessions']:>4} "
-                  f"{a['retries']:>4} {a['failures']:>4} {a['last_days_ago']:>10}  "
-                  f"{','.join(tags)}")
+            print(f"无可裁决例外（窗口 {args.days} 天内有 {len(agg)} 个资产在用；"
+                  f"扫描根 {args.root}）。")
+        else:
+            print(f"例外队列（冷门≥{args.cold_days}天 或 高重试 或 高失败；"
+                  f"窗口 {args.days} 天）—— 只列**你能裁决的**资产：\n")
+            print(TABLE_HEAD)
+            print(TABLE_RULE)
+            for name, a in exceptions:
+                print(row_line(name, a, args.cold_days))
+        if inert:
+            # 内置与别人的 marketplace 不是你的库，不能悄悄吞掉——列出来但标明无需裁决。
+            # 必须连扫描根一起报：项目若在根之外，会被归为「内置」而静默排除出队列，
+            # 那是假阴性（同「证据过期读成健康」一类）。
+            print(f"\n另有 {len(inert)} 项非本库资产被标记，**无需裁决**"
+                  f"（内置，或位于扫描根之外：{args.root}）：")
+            for name, a in inert:
+                print(f"  - {name}（{short_source(a['source'])}，{row_tags(a, args.cold_days)}）")
         if vanished:
-            print(f"\n⚠️ 退出窗口：{', '.join(vanished)}（上轮在窗口内、本轮已滑出）")
-        print("\n裁决（决定后执行；keep 可加 --ttl YYYY-MM-DD 到期重回队列）：")
-        for name, _a in exceptions:
-            print(f"  python3 ~/.claude/scripts/decision_log.py record "
-                  f"--skill {name} --action keep|retire --reason \"…\"")
-        print("  查看：python3 ~/.claude/scripts/decision_log.py list"
-              " ｜ 到期复查：… due")
+            print(f"\n⚠️ 退出窗口：{', '.join(vanished)}"
+                  f"（上轮在窗口内、本轮已滑出——可能是真冷门，也可能是记录过期，"
+                  f"两者从此处起无法区分，判冷门前先查源是否还在）")
+        if exceptions:
+            print("\n裁决（决定后执行；keep 可加 --ttl YYYY-MM-DD 到期重回队列）：")
+            for name, _a in exceptions:
+                print(f"  python3 ~/.claude/scripts/decision_log.py record "
+                      f"--skill {name} --action keep|retire --reason \"…\"")
+            print("  查看：python3 ~/.claude/scripts/decision_log.py list"
+                  " ｜ 到期复查：… due")
         return
 
     if not rows:
@@ -331,24 +383,18 @@ def main():
         return
 
     print(f"近 {args.days} 天内的调用统计（重试窗口 {args.retry_window_sec}s）\n")
-    print(f"{'资产':<24} {'类型':<6} {'调用':>4} {'会话':>4} {'重试':>4} "
-          f"{'失败':>4} {'最近(天前)':>10}")
-    print("-" * 66)
+    print(TABLE_HEAD)
+    print(TABLE_RULE)
     for name, a in rows:
-        print(f"{name:<24} {a['kind']:<6} {a['count']:>4} {a['sessions']:>4} "
-              f"{a['retries']:>4} {a['failures']:>4} {a['last_days_ago']:>10}")
+        print(row_line(name, a, args.cold_days, with_tags=False))
 
     if exceptions:
         print(f"\n⚠️ 例外队列（需人裁决）：{len(exceptions)} 个")
         for name, a in exceptions:
-            tags = []
-            if is_cold(a, args.cold_days):
-                tags.append("冷门")
-            if is_flaky(a):
-                tags.append("高重试")
-            if is_failing(a):
-                tags.append("高失败")
-            print(f"  - {name}（{','.join(tags)}）")
+            print(f"  - {name}（{short_source(a['source'])}，{row_tags(a, args.cold_days)}）")
+    if inert:
+        print(f"\nℹ️ 非本库资产（内置 / 别人的 marketplace，无需裁决）：{len(inert)} 个 —— "
+              f"{'、'.join(n for n, _ in inert)}")
     if vanished:
         print(f"\n⚠️ 退出窗口：{', '.join(vanished)}")
 

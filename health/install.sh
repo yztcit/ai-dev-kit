@@ -11,7 +11,10 @@ LABEL="com.tal.claude.skillhealth"
 
 # 1. 用户级脚本目录：软链三个脚本到仓库（幂等）
 mkdir -p "$SCRIPTS_DIR"
-for f in scan_skill_usage.py scan_capability_layers.py decision_log.py skill-health-check.sh; do
+# asset_inventory.py 是被 import 的模块，不是入口——但一并软链，使软链目录自洽
+# （不依赖「Python 解析软链取真实目录」这一行为）
+for f in asset_inventory.py scan_skill_usage.py scan_capability_layers.py \
+         decision_log.py skill-health-check.sh; do
   ln -sf "$HEALTH_DIR/$f" "$SCRIPTS_DIR/$f"
 done
 echo "✓ 脚本软链已就绪：$SCRIPTS_DIR"
