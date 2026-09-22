@@ -13,6 +13,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
 SCAN="$SCRIPT_DIR/scan_skill_usage.py"
+LAYERS="$SCRIPT_DIR/scan_capability_layers.py"
 REPORT_DIR="$SCRIPT_DIR/report"
 REPORT="$REPORT_DIR/skill-health-report.txt"
 HISTORY="$REPORT_DIR/skill-usage-history.jsonl"
@@ -21,20 +22,28 @@ COLD_DAYS=14
 
 mkdir -p "$REPORT_DIR"
 
-# --snapshot 落 append-only 聚合，使时间序列不随源转录过期而丢失
+# 用量侧：--snapshot 落 append-only 聚合，使时间序列不随源转录过期而丢失
 output=$(python3 "$SCAN" --days "$DAYS" --cold-days "$COLD_DAYS" \
            --exceptions-only --snapshot "$HISTORY" 2>&1)
+
+# 放置侧：跨项目重复的能力 = 晋升候选（检测与用量无关，故分列）
+layers=$(python3 "$LAYERS" 2>&1)
 
 {
   echo "=== $(date '+%Y-%m-%d %H:%M') 例外队列 ==="
   echo "$output"
   echo ""
+  echo "$layers"
+  echo ""
 } >> "$REPORT"
 
-# 有例外（冷门/高重试/高失败）或资产退出窗口则通知；「无例外」「无数据」按需静默
+# 通知优先级：需裁决的例外 > 晋升候选 > 退出窗口；「无例外」「无数据」静默
 if echo "$output" | grep -qE '冷门|高重试|高失败'; then
   summary=$(echo "$output" | grep -E '冷门|高重试|高失败' | head -5 | tr '\n' ' ')
   osascript -e "display notification \"${summary}\" with title \"Skill 健康巡检：需裁决\""
+elif echo "$layers" | grep -q '晋升候选'; then
+  summary=$(echo "$layers" | grep -A5 '晋升候选' | tail -5 | tr '\n' ' ')
+  osascript -e "display notification \"${summary}\" with title \"能力分层巡检：晋升候选\""
 elif echo "$output" | grep -q '退出窗口'; then
   summary=$(echo "$output" | grep '退出窗口' | head -3 | tr '\n' ' ')
   osascript -e "display notification \"${summary}\" with title \"Skill 健康巡检：资产退出窗口\""
