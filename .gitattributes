@@ -1,4 +1,0 @@
-# 决策日志是 append-only JSONL：两人各自追加时用 union 合并，保证两边都不丢行
-# （每行自带 decided_at 与 by，顺序无关紧要，故 union 是安全的）
-# 放在仓库根：决策日志在本仓库是公共层那一份（.claude/health-decisions.jsonl）
-.claude/health-decisions.jsonl merge=union
