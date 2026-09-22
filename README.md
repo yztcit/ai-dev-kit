@@ -28,18 +28,36 @@
 |---|---|---|---|
 | `video-pe` | Skill | 把文字与图/视频/音频素材引用整理成结构化视频生成请求（只格式化，不扩写剧情） | `/video:video-pe` |
 
-## health/：skill 健康巡检工具（流水线 A）
+## health/：资产健康巡检工具（流水线 A）
 
-`health/` 是一套跨项目通用的 skill 健康巡检工具，通过解析本地会话转录（`~/.claude/projects/<项目>/*.jsonl`）算出每个 skill 的冷门度/调用次数/重试率，产出「例外队列」供人裁决，替代人工例行巡检。
+`health/` 是一套跨项目通用的健康巡检工具，通过解析本地会话转录（`~/.claude/projects/<项目>/*.jsonl`）算出每个**资产**（Skill 与 Agent）的冷门度/调用次数/重试率/失败次数，产出「例外队列」供人裁决，替代人工例行巡检。
 
-- `scan_skill_usage.py` — 转录解析，产出调用统计 + 例外队列
+- `scan_skill_usage.py` — 转录解析，产出调用统计 + 例外队列 + 窗口报告
 - `decision_log.py` — 决策日志（双向 override + ttl 重入队列）
 - `skill-health-check.sh` — 巡检入口，有例外弹 macOS 通知
 - `install.sh` — 幂等安装器，软链脚本 + 注册 launchd 定时任务（周一 09:15）
 
 换设备安装：`clone` 本仓库后 `./health/install.sh`。
 
+### 覆盖范围
+
+Skill（`name:"Skill"`）与 Agent（`name:"Agent"|"Task"` 的 `subagent_type`）都在统计内。**只统计命名资产**：Agent 调用缺 `subagent_type` 时（内置通用子代理）归入 `(general)`。子代理内部转录（`<session>/subagents/*.jsonl`）不参与统计——调用记录在父转录里，计入会重复。
+
+失败信号取自该次调用自身 `tool_result` 的 `is_error`（按 `tool_use_id` 关联），不统计调用内部执行的其他工具错误——否则「跑测试的 skill」会被错误地判成高失败。
+
+### 两个配置不变量（改了会静默失效）
+
+1. **`--cold-days` 必须严格小于转录保留期**（Claude Code `cleanupPeriodDays`，默认 30 天）。等于或超过保留期时，资产在「够冷」之前记录就已被清理，冷门**永远判不出来**——报告会一直显示「无例外」，看起来健康，其实是没有数据。脚本检测到该配置会直接告警。
+2. **`--days` 取保留期本身即可**（默认真实配置用 30）。取更大值不会拿到更早的数据（那部分已被清理），只会让窗口显得更长。
+
+### 快照（对抗源过期）
+
+源转录只有约 30 天寿命，窗口内证据会持续流失。`--snapshot FILE` 把每轮聚合追加成 append-only JSONL（默认 `report/skill-usage-history.jsonl`，gitignore），使时间序列不随源过期而丢失；并与上一轮对比报出**退出窗口**的资产。仅在窗口一致时对比——窗口不同则「退出」只是口径差异，不是信号。
+
+> 退出窗口的语义是**中性**的：既可能是真冷门，也可能是记录刚好过期。这正是必须显式报出来的原因——把两者都读成「无例外」，就是假阴性。
+
 ## 当前状态
 
 - `plugins/video` 已落地：`video-pe` 视频生成请求整理。
-- `health/` 已落地（流水线 A），报告与决策日志写入 `health/report/`（gitignore，本地可见）。
+- `health/` 已落地（流水线 A），报告与决策日志写入 `health/report/`（gitignore，本地可见）。覆盖已从「仅 Skill」扩到「Skill + Agent」，并补齐失败信号与快照。
+- **未落地**：流水线 B（回归门禁，judge 打分 + 冻结基线）、流水线 C（官方/依赖漂移检测）。B 是唯一能产出「更好」的环节——A 只能告诉谁没人用，说不出谁做得好。

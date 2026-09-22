@@ -1,17 +1,29 @@
 #!/usr/bin/env python3
 """流水线 A：转录解析脚本（零埋点）。
 
-从 ~/.claude/projects/<项目>/*.jsonl 的真实会话转录中，提取 Skill 调用的
-tool_use 事件，聚合出按 skill 的健康信号：调用次数 / 最近使用 / 冷门度 / 重试率。
+从 ~/.claude/projects/<项目>/*.jsonl 的真实会话转录中，提取 Skill 与 Agent
+（子代理）调用的 tool_use 事件，聚合出按资产的健康信号：
+调用次数 / 最近使用 / 冷门度 / 重试率 / 失败次数。
 
 用法:
     python3 scan_skill_usage.py [--days 30] [--retry-window-sec 600] [--json]
+    python3 scan_skill_usage.py --snapshot report/skill-usage-history.jsonl
 
-数据来源（v4 实测确认）:
+数据来源（v4 实测确认，v2 扩展）:
     ~/.claude/projects/<项目>/*.jsonl
-    每行一条 JSON，Skill 调用位于 message.content[] 中:
-        {type:"tool_use", name:"Skill", input:{skill:"<名>", args:"..."}}
+    每行一条 JSON，调用位于 message.content[] 中:
+        Skill : {type:"tool_use", id, name:"Skill", input:{skill:"<名>", args}}
+        Agent : {type:"tool_use", id, name:"Agent"|"Task", input:{subagent_type:"<名>"}}
+    结果位于 type=="user" 的行，content[].type=="tool_result"，以 tool_use_id 关联，
+    is_error 标记该次调用本身失败。
     行级带 timestamp(ISO8601)、sessionId。
+    <session>/subagents/*.jsonl 是子代理内部转录，不参与统计（调用记录在父转录里）。
+
+覆盖范围（v2 修正 v1 的两个盲区）:
+    1. v1 只解析 name=="Skill"，插件里的 Agent 资产（占一半）完全不可见。
+    2. v1 的 --days 默认 90，而源转录只有 ~30 天寿命（Claude Code cleanupPeriodDays
+       默认 30），窗口是假的，且把「证据过期」读成「无例外」→ 假阴性。
+       v2 显式报出窗口，并用 --snapshot 落 append-only 快照，使时间序列不随源过期而丢失。
 """
 import argparse
 import json
@@ -28,151 +40,286 @@ def parse_ts(s: str) -> datetime:
     return datetime.fromisoformat(s)
 
 
-def canonical_skill(raw: str) -> str:
-    """规范化 skill 名。
+def canonical(raw: str) -> str:
+    """规范化资产名。
 
-    转录里同一 skill 有两种记法：裸名（如 `frontend-design`）和插件前缀名
-    （如 `frontend-design:frontend-design`、`dev:solution-design`）。取冒号后
-    最后一段作为 skill 名，把两种记法归并为同一身份，避免冷门度被拆散误判。
+    转录里同一资产有裸名（`frontend-design`）与插件前缀名（`dev:code-reviewer`）
+    两种记法（Skill 与 Agent 皆然）。取冒号后最后一段作为身份，把两种记法归并，
+    避免冷门度被拆散误判。
     """
     return raw.rsplit(":", 1)[-1]
 
 
-def iter_skill_events():
-    """遍历所有项目转录，产出 (sessionId, timestamp, canonical_skill) 三元组。"""
+def iter_transcripts():
+    """产出所有父转录文件路径（跳过 subagents/ 子代理内部转录）。"""
     if not os.path.isdir(PROJECTS_DIR):
         return
     for proj in os.listdir(PROJECTS_DIR):
         proj_dir = os.path.join(PROJECTS_DIR, proj)
         if not os.path.isdir(proj_dir):
             continue
-        for fn in os.listdir(proj_dir):
-            if not fn.endswith(".jsonl"):
+        for root, _dirs, files in os.walk(proj_dir):
+            if os.path.basename(root) == "subagents":
                 continue
-            path = os.path.join(proj_dir, fn)
+            for fn in files:
+                if fn.endswith(".jsonl"):
+                    yield os.path.join(root, fn)
+
+
+def extract_calls(path: str):
+    """从单个转录提取本轮信息。
+
+    返回 (calls, tool_results):
+        calls: [(ts, sid, id, raw_name, kind, msg_key)]，kind ∈ {"skill", "agent"}
+        tool_results: {tool_use_id: is_error}
+    tool_use 与 tool_result 分行且以 id 关联，故需一次性扫完再回填。
+    msg_key 标识「同一条 assistant 消息」：同消息内的多次调用是并行 fan-out
+    （如一次派 3 个 Explore），不是重试，据此把它排除在重试统计外。
+    """
+    calls = []
+    results = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            for lineno, line in enumerate(f):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                otype = obj.get("type")
+                ts = obj.get("timestamp")
+                sid = obj.get("sessionId", "")
+                for c in obj.get("message", {}).get("content", []) or []:
+                    if not isinstance(c, dict):
+                        continue
+                    ctype = c.get("type")
+                    if ctype == "tool_use" and ts:
+                        name = c.get("name")
+                        inp = c.get("input") or {}
+                        msg_key = obj.get("uuid") or f"{path}:{lineno}"
+                        if name == "Skill" and inp.get("skill"):
+                            calls.append((ts, sid, c.get("id"), inp["skill"],
+                                          "skill", msg_key))
+                        elif name in ("Agent", "Task"):
+                            # subagent_type 可缺省（内置通用子代理）
+                            calls.append((ts, sid, c.get("id"),
+                                          inp.get("subagent_type") or "(general)",
+                                          "agent", msg_key))
+                    elif ctype == "tool_result" and c.get("tool_use_id") is not None:
+                        results[c["tool_use_id"]] = bool(c.get("is_error"))
+    except OSError:
+        return [], {}
+    return calls, results
+
+
+def collect(days: int, retry_window_sec: int):
+    """遍历全部转录，聚合成 {asset: stats}。"""
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days)
+
+    agg = defaultdict(lambda: {"kind": None, "count": 0, "last_ts": None,
+                               "sessions": set(), "retries": 0, "failures": 0})
+    # 重试需按会话判定：跨会话的两次调用不是重试
+    per_session = defaultdict(list)
+
+    for path in iter_transcripts():
+        calls, results = extract_calls(path)
+        for ts_raw, sid, call_id, raw_name, kind, msg_key in calls:
             try:
-                with open(path, encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            obj = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-                        if obj.get("type") != "assistant":
-                            continue
-                        for c in obj.get("message", {}).get("content", []):
-                            if not isinstance(c, dict):
-                                continue
-                            if c.get("type") != "tool_use" or c.get("name") != "Skill":
-                                continue
-                            skill = c.get("input", {}).get("skill")
-                            ts = obj.get("timestamp")
-                            sid = obj.get("sessionId", "")
-                            if skill and ts:
-                                yield sid, parse_ts(ts), canonical_skill(skill)
-            except OSError:
+                ts = parse_ts(ts_raw)
+            except (ValueError, AttributeError):
                 continue
+            if ts < cutoff:
+                continue
+            name = canonical(raw_name)
+            a = agg[name]
+            a["kind"] = kind
+            a["count"] += 1
+            a["sessions"].add(sid)
+            if results.get(call_id):
+                a["failures"] += 1
+            if a["last_ts"] is None or ts > a["last_ts"]:
+                a["last_ts"] = ts
+            per_session[(sid, name)].append((ts, msg_key))
+
+    for (_sid, name), events in per_session.items():
+        # 同一消息内的并行 fan-out 合并为一次调用，不计作重试
+        first_per_msg = {}
+        for ts, msg_key in events:
+            if msg_key not in first_per_msg or ts < first_per_msg[msg_key]:
+                first_per_msg[msg_key] = ts
+        ts_list = sorted(first_per_msg.values())
+        agg[name]["retries"] += sum(
+            1 for i in range(1, len(ts_list))
+            if (ts_list[i] - ts_list[i - 1]).total_seconds() <= retry_window_sec
+        )
+
+    for a in agg.values():
+        a["sessions"] = len(a["sessions"])
+        a["last_days_ago"] = (now - a["last_ts"]).days if a["last_ts"] else None
+    return agg
+
+
+def is_cold(a, cold_days):
+    return a["last_days_ago"] is not None and a["last_days_ago"] >= cold_days
+
+
+def is_flaky(a):
+    return a["retries"] >= 2 and a["count"] < 5
+
+
+def is_failing(a):
+    return a["failures"] >= 2 and a["count"] < 5
+
+
+def load_last_snapshot(path):
+    """读快照文件最后一行（上一轮聚合），无则返回 None。"""
+    if not path or not os.path.exists(path):
+        return None
+    last = None
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    last = line
+    except OSError:
+        return None
+    if not last:
+        return None
+    try:
+        return json.loads(last)
+    except json.JSONDecodeError:
+        return None
+
+
+def save_snapshot(path, days, cold_days, agg):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    rec = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "days": days,
+        "cold_days": cold_days,
+        "assets": {n: {"kind": a["kind"], "count": a["count"],
+                       "sessions": a["sessions"], "retries": a["retries"],
+                       "failures": a["failures"],
+                       "last_days_ago": a["last_days_ago"]}
+                   for n, a in agg.items()},
+    }
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--days", type=int, default=30, help="只统计最近 N 天内的调用")
+    ap.add_argument("--days", type=int, default=30,
+                    help="统计窗口（天）。注意源转录默认只保留 30 天，取更大值不会"
+                         "拿到更早的数据——那部分已被清理，会表现为「无数据」而非「无例外」")
     ap.add_argument("--retry-window-sec", type=int, default=600,
-                    help="同一 skill 在此窗口内再次调用记为一次重试")
+                    help="同一会话内同资产在此窗口内再次调用记为一次重试")
     ap.add_argument("--json", action="store_true", help="输出 JSON 而非表格")
-    ap.add_argument("--cold-days", type=int, default=30,
-                    help="最近 N 天未用视为冷门，进例外队列")
+    ap.add_argument("--cold-days", type=int, default=14,
+                    help="最近 N 天未用视为冷门，进例外队列。必须 < 保留期（默认 30 天）："
+                         "等于或超过保留期时，资产在能被判冷门之前证据就已过期，"
+                         "表现为「无数据」而非「冷门」，等于永远判不出来")
     ap.add_argument("--exceptions-only", action="store_true",
-                    help="只输出例外队列（冷门 + 高重试），不输出全量表")
+                    help="只输出例外队列（冷门 + 高重试 + 高失败），不输出全量表")
+    ap.add_argument("--snapshot", metavar="FILE",
+                    help="把本轮聚合追加到 append-only 快照（使时间序列不随源过期丢失），"
+                         "并与其最后一行对比报出「退出窗口」的资产")
     args = ap.parse_args()
 
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=args.days)
+    # 不变量：冷门阈值必须严格小于窗口/保留期。否则资产在「够冷」之前证据就已被清理，
+    # 冷门永远不可判——这正是 v1 的静默失效（日志读起来是「无例外」）。
+    if args.cold_days >= args.days:
+        print(f"⚠️ 配置失效：--cold-days({args.cold_days}) ≥ --days({args.days})，"
+              f"资产在够冷之前记录已过期，冷门永远判不出来。"
+              f"应取小于保留期（默认 30 天）的值，如 14。\n")
 
-    # skill -> {count, last_ts, sessions:set, retries:int, events:[(ts,sid)]}
-    agg = defaultdict(lambda: {"count": 0, "last_ts": None,
-                               "sessions": set(), "events": []})
-
-    for sid, ts, skill in iter_skill_events():
-        if ts < cutoff:
-            continue
-        a = agg[skill]
-        a["count"] += 1
-        a["sessions"].add(sid)
-        a["events"].append(ts)
-        if a["last_ts"] is None or ts > a["last_ts"]:
-            a["last_ts"] = ts
-
-    # 重试：同一 skill 在 retry_window_sec 内再次调用
-    for skill, a in agg.items():
-        events = sorted(a["events"])
-        retries = 0
-        for i in range(1, len(events)):
-            if (events[i] - events[i - 1]).total_seconds() <= args.retry_window_sec:
-                retries += 1
-        a["retries"] = retries
-        a["last_days_ago"] = (now - a["last_ts"]).days if a["last_ts"] else None
-        del a["events"]
-
-    # 排序：冷门度优先（最久未用在前）
+    agg = collect(args.days, args.retry_window_sec)
     rows = sorted(agg.items(), key=lambda kv: kv[1]["last_days_ago"] or 0, reverse=True)
+    exceptions = [(s, a) for s, a in rows
+                  if is_cold(a, args.cold_days) or is_flaky(a) or is_failing(a)]
 
-    # 例外队列：冷门（最近 cold_days 未用）或 高重试（重试 >= 2 且调用少）
-    def is_cold(a):
-        return a["last_days_ago"] is not None and a["last_days_ago"] >= args.cold_days
+    prev = load_last_snapshot(args.snapshot) if args.snapshot else None
+    vanished = []
+    # 仅在同窗口下对比：窗口不同则「退出」只是口径差异，不是信号
+    if prev and prev.get("days") == args.days:
+        prev_assets = prev.get("assets") or {}
+        vanished = sorted(set(prev_assets) - set(agg))
 
-    def is_flaky(a):
-        return a["retries"] >= 2 and a["count"] < 5
+    if args.snapshot:
+        save_snapshot(args.snapshot, args.days, args.cold_days, agg)
 
-    exceptions = [(s, a) for s, a in rows if is_cold(a) or is_flaky(a)]
+    if args.json:
+        out = {n: {"kind": a["kind"], "count": a["count"], "sessions": a["sessions"],
+                   "retries": a["retries"], "failures": a["failures"],
+                   "last_days_ago": a["last_days_ago"]}
+               for n, a in rows}
+        print(json.dumps({"window_days": args.days, "assets": out,
+                          "vanished_from_window": vanished},
+                         ensure_ascii=False, indent=2))
+        return
 
     if args.exceptions_only:
-        if not exceptions:
-            print("无例外。")
+        if not agg:
+            # 「无数据」与「无例外」必须分开报——否则源过期会被读成健康
+            print(f"无数据（近 {args.days} 天内无任何 Skill/Agent 调用记录；"
+                  f"源转录仅保留约 30 天，更早的记录已清理）")
             return
-        print(f"例外队列（冷门≥{args.cold_days}天 或 高重试）：\n")
-        print(f"{'skill':<24} {'调用':>4} {'会话':>4} {'重试':>4} {'最近(天前)':>10}  {'标记'}")
-        print("-" * 68)
-        for skill, a in exceptions:
+        if not exceptions:
+            print(f"无例外（窗口 {args.days} 天内有 {len(agg)} 个资产在用，均正常）。")
+            if vanished:
+                print(f"⚠️ 退出窗口：{', '.join(vanished)}"
+                      f"（上轮在窗口内、本轮已滑出——可能是真冷门，也可能是记录过期，"
+                      f"两者从此处起无法区分，判冷门前先查源是否还在）")
+            return
+        print(f"例外队列（冷门≥{args.cold_days}天 或 高重试 或 高失败；窗口 {args.days} 天）：\n")
+        print(f"{'资产':<24} {'类型':<6} {'调用':>4} {'会话':>4} {'重试':>4} "
+              f"{'失败':>4} {'最近(天前)':>10}  {'标记'}")
+        print("-" * 80)
+        for name, a in exceptions:
             tags = []
-            if is_cold(a):
+            if is_cold(a, args.cold_days):
                 tags.append("冷门")
             if is_flaky(a):
                 tags.append("高重试")
-            print(f"{skill:<24} {a['count']:>4} {len(a['sessions']):>4} "
-                  f"{a['retries']:>4} {a['last_days_ago']:>10}  {','.join(tags)}")
-        return
-
-    if args.json:
-        out = {skill: {"count": a["count"], "sessions": len(a["sessions"]),
-                       "retries": a["retries"],
-                       "last_days_ago": a["last_days_ago"]}
-               for skill, a in rows}
-        print(json.dumps(out, ensure_ascii=False, indent=2))
+            if is_failing(a):
+                tags.append("高失败")
+            print(f"{name:<24} {a['kind']:<6} {a['count']:>4} {a['sessions']:>4} "
+                  f"{a['retries']:>4} {a['failures']:>4} {a['last_days_ago']:>10}  "
+                  f"{','.join(tags)}")
+        if vanished:
+            print(f"\n⚠️ 退出窗口：{', '.join(vanished)}（上轮在窗口内、本轮已滑出）")
         return
 
     if not rows:
-        print(f"最近 {args.days} 天内无 Skill 调用记录。")
+        print(f"近 {args.days} 天内无 Skill/Agent 调用记录"
+              f"（源转录默认只保留 30 天，更早的记录已被清理）。")
         return
 
-    print(f"最近 {args.days} 天内的 Skill 调用统计（重试窗口 {args.retry_window_sec}s）\n")
-    print(f"{'skill':<24} {'调用':>4} {'会话':>4} {'重试':>4} {'最近(天前)':>10}")
-    print("-" * 52)
-    for skill, a in rows:
-        print(f"{skill:<24} {a['count']:>4} {len(a['sessions']):>4} "
-              f"{a['retries']:>4} {a['last_days_ago']:>10}")
+    print(f"近 {args.days} 天内的调用统计（重试窗口 {args.retry_window_sec}s）\n")
+    print(f"{'资产':<24} {'类型':<6} {'调用':>4} {'会话':>4} {'重试':>4} "
+          f"{'失败':>4} {'最近(天前)':>10}")
+    print("-" * 66)
+    for name, a in rows:
+        print(f"{name:<24} {a['kind']:<6} {a['count']:>4} {a['sessions']:>4} "
+              f"{a['retries']:>4} {a['failures']:>4} {a['last_days_ago']:>10}")
 
     if exceptions:
         print(f"\n⚠️ 例外队列（需人裁决）：{len(exceptions)} 个")
-        for skill, a in exceptions:
+        for name, a in exceptions:
             tags = []
-            if is_cold(a):
+            if is_cold(a, args.cold_days):
                 tags.append("冷门")
             if is_flaky(a):
                 tags.append("高重试")
-            print(f"  - {skill}（{','.join(tags)}）")
+            if is_failing(a):
+                tags.append("高失败")
+            print(f"  - {name}（{','.join(tags)}）")
+    if vanished:
+        print(f"\n⚠️ 退出窗口：{', '.join(vanished)}")
 
 
 if __name__ == "__main__":
