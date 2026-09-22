@@ -59,6 +59,48 @@ Skill（`name:"Skill"`）与 Agent（`name:"Agent"|"Task"` 的 `subagent_type`�
 
 > 退出窗口的语义是**中性**的：既可能是真冷门，也可能是记录刚好过期。这正是必须显式报出来的原因——把两者都读成「无例外」，就是假阴性。
 
+### 怎么查「需要裁决什么」
+
+三种入口，按场景选：
+
+**① 等通知（常态）** —— 每周一 09:15 自动跑，**只在有待处理项时**弹 macOS 通知，文案就是一行摘要：
+
+```
+Skill 健康巡检：需裁决
+4 个待裁决：panel、run、xpy-interact、frontend-design
+```
+
+通知点不出明细（`display notification` 不支持指定点击目标，见下「平台边界」），看到后走 ② 或 ③。
+
+**② 打开报告（看全量明细）** —— 每次巡检把完整结果追加到：
+
+```
+<仓库路径>/health/report/skill-health-report.txt
+```
+
+文件按时间倒序追加，每次一个 `=== 时间戳 ===` 段，段内含两块：**用量侧例外队列**（附可照抄的裁决命令）与**放置侧晋升候选**。
+
+**③ 手动查（随时，不落报告）** —— 两条命令，都是只读：
+
+```bash
+# 待裁决的例外（冷门 / 高重试 / 高失败）+ 每个例外的裁决命令
+python3 ~/.claude/scripts/scan_skill_usage.py --exceptions-only
+
+# 晋升候选（跨项目重复、共享层缺位的能力）
+python3 ~/.claude/scripts/scan_capability_layers.py
+
+# ttl 到期、需重新审视的 keep（只跟已落过的裁决有关）
+python3 ~/.claude/scripts/decision_log.py due
+```
+
+**三份清单分属两个维度，别混**：
+
+| 清单 | 来源 | 要你决定什么 |
+|---|---|---|
+| 例外队列 | 用量侧 | 这个能力**留还是下架** |
+| 晋升候选 | 放置侧 | 这个能力**上移还是不动** |
+| `due` | 决策日志 | 之前 keep 的，**还要不要继续留** |
+
 ### 裁决怎么用（`decision_log.py`）
 
 自动化只 flag，动作永远是人——但必须带理由与时效，并记成决策日志（**决策本身也是数据**）。命令入口 `~/.claude/scripts/decision_log.py`（软链到本仓库 `health/decision_log.py`）。
