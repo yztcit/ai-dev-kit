@@ -317,6 +317,12 @@ def main():
                   f"{','.join(tags)}")
         if vanished:
             print(f"\n⚠️ 退出窗口：{', '.join(vanished)}（上轮在窗口内、本轮已滑出）")
+        print("\n裁决（决定后执行；keep 可加 --ttl YYYY-MM-DD 到期重回队列）：")
+        for name, _a in exceptions:
+            print(f"  python3 ~/.claude/scripts/decision_log.py record "
+                  f"--skill {name} --action keep|retire --reason \"…\"")
+        print("  查看：python3 ~/.claude/scripts/decision_log.py list"
+              " ｜ 到期复查：… due")
         return
 
     if not rows:

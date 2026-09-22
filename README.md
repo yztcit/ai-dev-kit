@@ -69,6 +69,18 @@ Skill（`name:"Skill"`）与 Agent（`name:"Agent"|"Task"` 的 `subagent_type`�
 
 **已知边界（勿当 bug）**：判据按**名字**匹配，看不见**近义不同名**的覆盖。例如项目层的 `requirement-analysis` 与团队层的 `solution-design` 职责相近却不同名 → 会被报为候选，实际可能只需人工确认「已覆盖」。这正是它只出候选、不出结论的原因。
 
+### 平台边界（当前只支持 macOS）
+
+| 部件 | 跨平台？ | 说明 |
+|---|---|---|
+| `scan_skill_usage.py` / `scan_capability_layers.py` / `decision_log.py` | ✅ | 纯 Python，Windows 上可直接跑 |
+| 调度（`install.sh`） | ❌ macOS | 生成 launchd plist |
+| 通知（`skill-health-check.sh`） | ❌ macOS | `osascript` |
+
+**结论：Windows 目前收不到通知，也没有自动巡检**——不是「需要授权」，是这两块平台特定部件根本没写。Windows 用户今天能做的只有手动跑 Python 脚本。
+
+补它所需的最小工作（**尚未实现**）：一个 `skill-health-check.ps1`（跑同一对 Python 脚本 → 追加报告 → 弹 toast）+ 对应的一次性计划任务注册（`schtasks` / `Register-ScheduledTask`）。**为什么没顺手做**：本机无 Windows / 无 pwsh，无法验证任何一行；而一个静默失效的调度注册比没有更糟（会让人以为监控已开）。要上的话需在 Windows 上实跑一次确认。
+
 ## 当前状态
 
 - `plugins/video` 已落地：`video-pe` 视频生成请求整理。
