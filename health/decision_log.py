@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 """决策日志：人看数据做裁决，双向可 override，形成闭环。
 
-**分层存储（关键）**：决策跟随**资产所属层**存放，而不是集中在一处。
+**按判断的作用域存放，不按资产所属层存放**：
 
-    项目层资产 → <项目>/.claude/health-decisions.jsonl
-    团队层资产 → <团队仓库>/.claude/health-decisions.jsonl
-    公共层资产 → 本仓库 .claude/health-decisions.jsonl
+    项目层资产（本机使用判断） → ~/.claude/health-decisions.jsonl   ← 不进任何项目
+    团队层资产（对共享能力的立场）→ <团队仓库>/.claude/health-decisions.jsonl
+    公共层资产（对共享能力的立场）→ 本仓库 .claude/health-decisions.jsonl
 
-为什么必须分层：三层体系的公共层明令「不含任何业务/团队语境」，而裁决理由天然
-带业务语境（"某某产品线的 agent，迭代时才用"）。把项目层资产的裁决记进公共仓库，
-就是往公共层灌业务语境——违反它自己的准入判据。分层之后，项目层决策若落在
-gitignore 掉的 .claude/ 里，天然就不共享，这**正是**该有的结果。
+**为什么项目层判断不进项目**：业务项目不该承载工具状态——那是"哪个 skill 冷门"
+这类本机账，混进业务仓库只会变成 `git status` 噪声，甚至进业务 git 历史。
+本工具自己的既定模式就是「输出不过仓库」（报告与快照都写在 gitignore 的 report/），
+决策日志不该破例。
 
-读取是**跨层聚合**的：`list` / `due` / 两个扫描器都会读全部层，所以你看得到所有裁决。
+**为什么共享层判断仍进对应仓库**：那是**对共享能力的立场**（"这个 skill 是按需调用，
+别下架"），换个人、换台机器跑同一个工具时用得上，属于该层的能力定义的一部分。
+顺带，公共仓库因此**天然不含业务语境**（项目层判断根本不会流进去）。
+
+读取是**跨作用域聚合**的：`list` / `due` / 两个扫描器都读全部（用户级 + 各层仓库），
+所以你看得到所有裁决。
 
 团队层的仓库路径写在用户级配置 `~/.claude/health-layers.json`（机器特定，不进任何仓库）：
 
     {"marketplaces": {"<marketplace 名>": "<该层仓库的本地检出路径>"}}
 
-未配置的 marketplace 会被拒绝写入并提示——宁可不写，也不把业务内容塞进公共层。
+未配置的 marketplace 会被拒绝写入并提示——宁可不写，也不写错地方。
 
 schema（每条一条 JSON）:
 {
@@ -42,10 +47,13 @@ import json
 import os
 from datetime import datetime, date, timezone
 
-from asset_inventory import (BUILTIN, EXTERNAL_MARKETPLACES, PUBLIC_MARKETPLACE, REPO_ROOT,
-                             build_source_map, classify, find_project_claude_dirs)
+from asset_inventory import (BUILTIN, EXTERNAL_MARKETPLACES, PUBLIC_MARKETPLACE,
+                             REPO_ROOT, build_source_map, classify)
 LOG_NAME = "health-decisions.jsonl"
 DEFAULT_BY = os.environ.get("USER", "unknown")
+
+# 项目层判断的本机落点（不进任何项目仓库）
+USER_LOG = os.path.join(os.path.expanduser("~"), ".claude", LOG_NAME)
 
 # 团队层的本地仓库路径（机器特定 → 放用户级，不进任何仓库）
 LAYER_CONFIG = os.path.join(os.path.expanduser("~"), ".claude", "health-layers.json")
@@ -82,12 +90,15 @@ def team_logs() -> dict:
     return out
 
 
-def all_log_paths(root: str = None) -> list:
-    """所有层的决策文件路径（跨层聚合读取用）。"""
-    paths = [log_path(REPO_ROOT)]
+def all_log_paths(from_projects: list = None) -> list:
+    """所有决策文件路径（跨作用域聚合读取用）。
+
+    只有三处：用户级（项目层判断）+ 各共享层仓库。项目目录**不参与**——
+    本工具不在业务项目里留任何文件。`from_projects` 仅供兼容旧布局的迁移使用。
+    """
+    paths = [USER_LOG, log_path(REPO_ROOT)]
     paths += list(team_logs().values())
-    for claude_dir in find_project_claude_dirs(root or DEFAULT_SCAN_ROOT):
-        paths.append(os.path.join(claude_dir, LOG_NAME))
+    paths += list(from_projects or [])
     return paths
 
 
@@ -100,11 +111,11 @@ def resolve_log_for(source: str, root: str = None):
     if not source or source == BUILTIN:
         return None, "内置资产（磁盘上无对应文件），不属于任何层"
     parts = source.split("+")
-    # 项目层最具体，优先
+    # 项目层判断写用户级——**不进项目仓库**：那是本机使用判断，业务项目不该承载
+    # 工具状态（会成为 git status 噪声，甚至进业务 git 历史）
     for p in parts:
         if p.startswith("project:"):
-            proj = p.split(":", 1)[1]
-            return log_path(proj), f"项目层（{proj}）"
+            return USER_LOG, "本机（项目层资产的使用判断）"
     # 同名资产可能同时在多处存在（实测：code-reviewer 官方与团队都有），
     # 故先找**能落地的层**，别取到第一个（外部 marketplace）就拒绝。
     teams = team_logs()
@@ -145,10 +156,10 @@ def _read(path: str) -> list:
     return rows
 
 
-def load_decisions(root: str = None) -> list:
-    """跨层聚合读取全部裁决。"""
+def load_decisions() -> list:
+    """跨作用域聚合读取全部裁决（用户级 + 各共享层仓库）。"""
     rows = []
-    for p in all_log_paths(root):
+    for p in all_log_paths():
         rows += _read(p)
     return rows
 
@@ -197,7 +208,7 @@ def record(args):
     path, desc = resolve_log_for(source, root)
     if path is None:
         print(f"✘ 拒绝写入：{args.skill} —— {desc}")
-        print("  （决策跟随资产所属层存放；无归属就不记，避免业务语境污染无关层）")
+        print("  （判断按作用域存放：项目层→本机，共享层→该层仓库；无归属就不记）")
         return 1
     rec = {
         "skill": args.skill,
@@ -219,7 +230,7 @@ def record(args):
 
 
 def list_(args):
-    rows = load_decisions(getattr(args, "root", None))
+    rows = load_decisions()
     if args.skill:
         rows = [r for r in rows if r["skill"] == args.skill]
     if not rows:
@@ -239,7 +250,7 @@ def due(args):
     today = date.today()
     # 只看每个资产的**最近一条**裁决：否则「先 keep（ttl 过期）后 retire」的资产
     # 会被旧记录一直拉回队列
-    rows = latest_per_skill(load_decisions(getattr(args, "root", None)))
+    rows = latest_per_skill(load_decisions())
     due_rows = [r for r in rows.values() if review_due(r, today)]
     if not due_rows:
         print("无到期的保留决策。")
@@ -256,7 +267,7 @@ def main():
 
     def add_common(p):
         p.add_argument("--root", default=DEFAULT_SCAN_ROOT,
-                       help="项目扫描根目录，用于判定资产所属层（默认 ~/workspace）")
+                       help="项目扫描根目录，用于判定资产来源与作用域（默认 ~/workspace）")
 
     p_rec = sub.add_parser("record")
     p_rec.add_argument("--skill", required=True)

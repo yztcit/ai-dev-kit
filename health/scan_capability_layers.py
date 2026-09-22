@@ -88,7 +88,7 @@ def main():
     # 已裁决的候选退出队列（与用量侧同构）——否则「决定完了还在催」，通知每周重复。
     # 注：promote（决定上移）是**有执行动作**的裁决，实际搬完之前候选不会自动消失，
     # 故它虽不再进通知，仍单独列出并标注「待执行」，避免搬运动作被遗忘。
-    decided = latest_per_skill(load_decisions(args.root))
+    decided = latest_per_skill(load_decisions())
     open_c, settled_c = [], []
     for c in candidates:
         rec = decided.get(c["name"])

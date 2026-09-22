@@ -303,7 +303,7 @@ def main():
 
     # 已裁决且未到复查日的，退出队列——否则「裁决完还在催」= 闭环没闭上，
     # 通知会每周重复同一件事，最后被整体无视。
-    decided = latest_per_skill(load_decisions(args.root))
+    decided = latest_per_skill(load_decisions())
     exceptions, settled = [], []
     for name, a in actionable:
         rec = decided.get(name)
