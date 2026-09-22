@@ -16,6 +16,12 @@
         Agent : {type:"tool_use", id, name:"Agent"|"Task", input:{subagent_type:"<名>"}}
     结果位于 type=="user" 的行，content[].type=="tool_result"，以 tool_use_id 关联，
     is_error 标记该次调用本身失败。
+
+    ⚠️ 「失败」列的语义边界（勿当质量指标读）：它只测**机制级失败**（技能找不到、
+    调用崩了）。技能跑起来了但干得烂，tool_result 是成功的 → 这一列**结构性地接近 0**
+    （实测 47 次调用全 False，join 已验证有效，是真读数）。真正的质量信号是
+    「用户推翻/重做」，实测约 3%，太稀疏且需 judge 事后判（见 BACKLOG 流水线 B）。
+    把它当质量指标会得出"一切正常"的错觉——本工具反复在治的那种假阴性。
     行级带 timestamp(ISO8601)、sessionId。
     <session>/subagents/*.jsonl 是子代理内部转录，不参与统计（调用记录在父转录里）。
 
