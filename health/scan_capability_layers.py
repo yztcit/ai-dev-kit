@@ -101,6 +101,10 @@ def main():
     ap.add_argument("--root", default=os.path.join(HOME, "workspace"),
                     help="项目扫描根目录（默认 ~/workspace）")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--brief", action="store_true",
+                    help="只输出一行摘要（人看）")
+    ap.add_argument("--brief-file", metavar="FILE",
+                    help="把一行摘要写到 FILE，供通知脚本用")
     args = ap.parse_args()
 
     # (kind, name) -> {repo_identity: {内容哈希: 项目根路径}}
@@ -129,6 +133,18 @@ def main():
             "where": sorted({next(iter(repo.values())) for repo in repos.values()}),
         })
     candidates.sort(key=lambda c: (-c["projects"], c["name"]))
+
+    # 一行摘要：通知横幅宽度有限，塞表格原文只会变成噪声
+    brief = ("无晋升候选" if not candidates else
+             f"{len(candidates)} 个晋升候选：{'、'.join(c['name'] for c in candidates)}")
+
+    if args.brief_file:
+        with open(args.brief_file, "w", encoding="utf-8") as f:
+            f.write(brief + "\n")
+
+    if args.brief:
+        print(brief)
+        return
 
     if args.json:
         print(json.dumps({"root": args.root, "candidates": candidates,

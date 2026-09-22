@@ -225,6 +225,11 @@ def main():
                          "表现为「无数据」而非「冷门」，等于永远判不出来")
     ap.add_argument("--exceptions-only", action="store_true",
                     help="只输出例外队列（冷门 + 高重试 + 高失败），不输出全量表")
+    ap.add_argument("--brief", action="store_true",
+                    help="只输出一行摘要（人看）")
+    ap.add_argument("--brief-file", metavar="FILE",
+                    help="把一行摘要写到 FILE，供通知脚本用。与 --snapshot 同一次运行，"
+                         "避免为了拿摘要而重跑扫描（重跑会让快照重复落盘）")
     ap.add_argument("--snapshot", metavar="FILE",
                     help="把本轮聚合追加到 append-only 快照（使时间序列不随源过期丢失），"
                          "并与其最后一行对比报出「退出窗口」的资产")
@@ -251,6 +256,26 @@ def main():
 
     if args.snapshot:
         save_snapshot(args.snapshot, args.days, args.cold_days, agg)
+
+    # 一行摘要：通知横幅宽度有限，塞表格原文只会变成噪声
+    if not agg:
+        brief = "无数据（窗口内无调用记录）"
+    elif exceptions:
+        brief = f"{len(exceptions)} 个待裁决：{'、'.join(n for n, _ in exceptions)}"
+        if vanished:
+            brief += f"；{len(vanished)} 个退出窗口"
+    elif vanished:
+        brief = f"无待裁决；{len(vanished)} 个退出窗口：{'、'.join(vanished)}"
+    else:
+        brief = f"无例外（{len(agg)} 个资产在用）"
+
+    if args.brief_file:
+        with open(args.brief_file, "w", encoding="utf-8") as f:
+            f.write(brief + "\n")
+
+    if args.brief:
+        print(brief)
+        return
 
     if args.json:
         out = {n: {"kind": a["kind"], "count": a["count"], "sessions": a["sessions"],
