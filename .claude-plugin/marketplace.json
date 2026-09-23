@@ -9,6 +9,12 @@
       "source": "./plugins/video",
       "description": "视频生成能力：video-pe 将文字与图/视频/音频素材引用整理成结构化视频生成请求",
       "category": "media"
+    },
+    {
+      "name": "conventions",
+      "source": "./plugins/conventions",
+      "description": "通用工作约定：决策方式、改动纪律、提交规范、自动化优先、协作方式。通过 SessionStart hook 在每次会话开始时自动注入",
+      "category": "productivity"
     }
   ]
 }
