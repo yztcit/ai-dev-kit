@@ -244,19 +244,30 @@ def load_last_snapshot(path):
 
 
 def save_snapshot(path, days, cold_days, agg):
+    """追加本轮聚合；**与上一条完全相同则跳过**。
+
+    快照的意义是「时间序列」——记录状态的变化。同一状态下反复追加只是噪声：
+    实测开发期 3 小时内写入 17 条、其中 15 对相邻完全相同，序列被淹没、失去意义。
+    """
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    assets = {n: {"kind": a["kind"], "count": a["count"],
+                  "sessions": a["sessions"], "retries": a["retries"],
+                  "failures": a["failures"],
+                  "last_days_ago": a["last_days_ago"]}
+              for n, a in agg.items()}
+    prev = load_last_snapshot(path)
+    if (prev and prev.get("days") == days and prev.get("cold_days") == cold_days
+            and prev.get("assets") == assets):
+        return False
     rec = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "days": days,
         "cold_days": cold_days,
-        "assets": {n: {"kind": a["kind"], "count": a["count"],
-                       "sessions": a["sessions"], "retries": a["retries"],
-                       "failures": a["failures"],
-                       "last_days_ago": a["last_days_ago"]}
-                   for n, a in agg.items()},
+        "assets": assets,
     }
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return True
 
 
 def main():
