@@ -28,8 +28,21 @@ mkdir -p "$RULES_DIR"
 ln -sf "$REPO_ROOT/plugins/conventions/CONVENTIONS.md" "$RULES_DIR/conventions.md"
 echo "✓ 用户级规则已就绪：$RULES_DIR/conventions.md"
 
+# --- 3. health 命令：状态一览入口 ---
+# 放在 ~/.local/bin（已在 PATH；uv/graphify 等也在此，与本工具依赖同处）。
+# 装了它就能在任何地方直接跑 `health`，不必记路径、也不必问 Claude。
+BIN_DIR="$HOME/.local/bin"
+mkdir -p "$BIN_DIR"
+ln -sf "$REPO_ROOT/status.sh" "$BIN_DIR/health"
+echo "✓ 命令已就绪：$BIN_DIR/health"
+case ":$PATH:" in
+  *":$BIN_DIR:"*) ;;
+  *) echo "  ⚠️  $BIN_DIR 不在 PATH，需自行加入 shell 配置" ;;
+esac
+
 echo ""
 echo "========================================"
 echo "  完成"
 echo "========================================"
 echo "重启 Claude Code 会话后生效；用 /context 可确认规则已加载。"
+echo "随时用 \`health\` 看体系状态（-v 展开明细）。"
