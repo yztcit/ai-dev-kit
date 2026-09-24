@@ -20,10 +20,18 @@ rc=0
 
 echo "── 体系自检 ──"
 
-if launchctl list 2>/dev/null | grep -q com.tal.claude.skillhealth; then
+# 分三态判定：已加载 / 未加载 / 查不了。不能把「查不了」报成「未加载」——
+# 受限会话下 launchctl 查询会静默失败，报成未加载等于假警报，把人赶去重跑安装脚本。
+LABEL=com.tal.claude.skillhealth
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+if ! launchctl print "gui/$(id -u)" >/dev/null 2>&1; then
+  echo "  · 定时巡检：查不到 launchd（非登录会话或受限环境），本次跳过判定"
+elif launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
   echo "  ✓ 定时巡检已加载（周一 09:15）"
+elif [ -f "$PLIST" ]; then
+  echo "  ✗ 定时巡检已安装但未加载 → launchctl load $PLIST"; rc=1
 else
-  echo "  ✗ 定时巡检未加载 → 跑 $REPO/install.sh"; rc=1
+  echo "  ✗ 定时巡检未安装 → 跑 $REPO/install.sh"; rc=1
 fi
 
 missing=""
