@@ -381,6 +381,22 @@ def sync_into(target, trunk, actions, diverged, status_only=False):
 
 
 def main(argv):
+    """SessionStart hook 的入口。
+
+    这里必须兜住所有异常：本脚本每次会话开头都会跑，磁盘满 / 权限不足 / 文件被并发删掉
+    都会让下面那些 copy/remove 抛 OSError——不兜的话每个会话开头都糊一段 traceback。
+    失败降级成一行提示（手动排查走 --status，那条路径不兜，要看到完整栈）。
+    """
+    try:
+        return _sync(argv)
+    except Exception as e:  # noqa: BLE001
+        if "--status" not in argv:
+            print(f"⚠ .claude 对齐失败（不影响使用）：{type(e).__name__}: {e}")
+            print(f"  手动排查：python3 {os.path.realpath(__file__)} --status")
+        return 0
+
+
+def _sync(argv):
     quiet = "--quiet" in argv
     status_only = "--status" in argv
     args = [a for a in argv if not a.startswith("--")]
