@@ -69,13 +69,15 @@ health -v     # 展开明细
 一个仓库为了并行打开多个分支而建多个检出目录时，项目 `.claude` 会裂成几份各自漂移——因为
 `.claude` 被 gitignore，它跟着**检出目录**走，不进 git。实测后果：同一份 agent 文档在两个检出里
 一个 32KB 一个 16KB；某个 agent 只存在于其中一个检出；第三个检出干脆没有 `.claude`。
+`CLAUDE.md` 同理（远端仓库里根本没有它，各检出各存一份），实测两个检出一个有登记某领域 agent、
+一个没有——所以一并纳入对齐范围。
 
 做法：**不做软链、不额外开目录**。各检出各留一份真实的 `.claude`，由 `sync.py` 在会话开始时
 把**当前检出**对齐到主干（只动当前检出，且只动「自己没动过」的文件）。
 
 - `sync.py` — 对齐器。扫 `$CLAUDE_SYNC_ROOT`（默认 `~/workspace`）下带 `.git` 的目录，按**归一化
   git remote** 归组（不按目录名：同名不同仓、同仓不同路径都会出现），认出主干后逐文件对齐
-  `agents`/`rules`/`skills`/`plans`/`tools`/`settings.json`。
+  `.claude/{agents,rules,skills,plans,tools,settings.json}` 与根目录的 `CLAUDE.md`。
 - `install.sh` — 注册 `SessionStart` hook + 用户级 skill。
 - `SKILL.md` — 用户级 skill，想显式对齐或把分支改动合并回主干时点名用。
 
@@ -87,7 +89,7 @@ health -v     # 展开明细
 
 | 谁 | 行为 |
 |---|---|
-| 主干检出（develop / main / master） | 权威。`sync.py` 只读它，**从不改它** |
+| 主干检出（**开发主分支**，默认找 develop / dev / main / master） | 权威。`sync.py` 只读它，**从不改它** |
 | 其它检出 | 这个文件**自己没动过** → 跟随主干（新增 / 更新 / 删除都跟） |
 | 其它检出 | 自己动过的文件 → **一律不动**，那是本分支的工作成果，等合并 |
 
@@ -99,7 +101,12 @@ health -v     # 展开明细
 
 **分支的改动不会自动回到主干**——那正是「完工后合并」这一步，需要人判断，由 `shared-config` skill 做。
 
-主干认定：`$CLAUDE_SYNC_TRUNK` 指定的分支名，否则依次找 develop / main / master。
+主干认定：`$CLAUDE_SYNC_TRUNK` 指定的分支名，否则依次找 develop / dev / main / master。
+主干取的是**开发主分支**——feature 从它切出、也合回它；提测 / 发版分支（master / release）是下游，
+不该当主干，否则会把下游的文档倒灌回 feature。找不到主干时不动作。
+
+`.claude` 是本地文件、不进构建产物，所以对齐它不影响任何分支的产出。
+
 覆盖前仍会把被盖的那版存进 `<检出>/.claude/.sync-backup/`（单槽）作为兜底。
 
 > **为什么不用软链**（试过，退回）：整个 `.claude` 做成软链会让 health 巡检看不到该项目资产

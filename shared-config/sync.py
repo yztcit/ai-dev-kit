@@ -27,8 +27,9 @@
 
 - **分支的文档改动不会自动回到主干**——那正是「完工后合并」这一步，需要人判断，交给 skill 做。
 - 主干上删掉的文件，只有本地「没动过」时才会跟着删；本地改过的不会被删。
-- 主干认定：$CLAUDE_SYNC_TRUNK 指定的分支名，否则依次找 develop / main / master；
-  都没有就取第一个检出。
+- 主干认定：$CLAUDE_SYNC_TRUNK 指定的分支名，否则依次找 develop / dev / main / master
+  （主干是**开发主分支**——feature 从它切出、也合回它；提测/发版分支是下游，不该当主干）；
+  都没有就取第一个检出。找不到主干时不动作。
 - 发现同仓库检出：扫 $CLAUDE_SYNC_ROOT（默认 ~/workspace）下带 .git 的目录，按**归一化
   git remote** 归组——不按目录名，因为「同名不同仓」「同仓不同路径」都会出现。
 
@@ -50,9 +51,15 @@ from asset_inventory import normalize_remote  # noqa: E402  与巡检共用同�
 
 HOME = os.path.expanduser("~")
 SYNC_ROOT = os.environ.get("CLAUDE_SYNC_ROOT") or os.path.join(HOME, "workspace")
-TRUNK_BRANCHES = ("develop", "main", "master")
+# 主干 = **开发主分支**：feature 从它切出、也合回它。下游分支（提测/发版，如 master/release）
+# 不是主干——方向是「开发主分支 → 下游」，反了会把提测分支的文档倒灌回 feature。
+# 后面的名字只是兜底，给「主分支就叫 main/master」的仓库用。
+TRUNK_BRANCHES = ("develop", "dev", "main", "master")
 SYNC_TREES = ("agents", "rules", "skills", "plans", "tools")
 SYNC_FILES = ("settings.json",)
+# 检出根目录下的本地配置：和 .claude 一样不入 git、一样会跨检出漂移（实测：一个检出登记了
+# 某领域 agent，另一个没有），所以一并纳入。
+SYNC_ROOT_FILES = ("CLAUDE.md",)
 STATE_FILE = ".sync-state.json"
 BACKUP_DIR = ".sync-backup"
 MAX_DEPTH = 4
@@ -178,25 +185,38 @@ def digest(path):
 
 
 def iter_files(checkout):
-    """该检出 .claude 下参与同步的文件 → {相对路径: 绝对路径}。"""
+    """该检出参与同步的文件 → {相对路径: 绝对路径}。
+
+    相对路径以 `.claude` 为基准；`SYNC_ROOT_FILES`（CLAUDE.md）在检出根，用裸文件名作键。
+    """
     base = claude_dir(checkout)
     out = {}
-    if not os.path.isdir(base):
-        return out
-    for tree in SYNC_TREES:
-        root = os.path.join(base, tree)
-        if not os.path.isdir(root):
-            continue
-        for dirpath, dirnames, files in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d != BACKUP_DIR]
-            for f in files:
-                full = os.path.join(dirpath, f)
-                out[os.path.relpath(full, base)] = full
-    for name in SYNC_FILES:
-        full = os.path.join(base, name)
+    if os.path.isdir(base):
+        for tree in SYNC_TREES:
+            root = os.path.join(base, tree)
+            if not os.path.isdir(root):
+                continue
+            for dirpath, dirnames, files in os.walk(root):
+                dirnames[:] = [d for d in dirnames if d != BACKUP_DIR]
+                for f in files:
+                    full = os.path.join(dirpath, f)
+                    out[os.path.relpath(full, base)] = full
+        for name in SYNC_FILES:
+            full = os.path.join(base, name)
+            if os.path.isfile(full):
+                out[name] = full
+    for name in SYNC_ROOT_FILES:
+        full = os.path.join(checkout, name)
         if os.path.isfile(full):
             out[name] = full
     return out
+
+
+def resolve(checkout, rel):
+    """相对路径 → 绝对路径。CLAUDE.md 这类根文件不在 .claude 下。"""
+    if rel in SYNC_ROOT_FILES:
+        return os.path.join(checkout, rel)
+    return os.path.join(claude_dir(checkout), rel)
 
 
 def load_state(checkout):
@@ -275,9 +295,30 @@ def derealize(checkout, actions):
         one(os.path.join(base, name))
 
 
+def ensure_git_exclude(checkout):
+    """老分支的 .gitignore 可能没忽略这些本地文件（develop 是后来才加的）。
+
+    写 `.git/info/exclude`——它是本地的，不会把 tracked 的 .gitignore 改成脏文件。
+    """
+    exclude = os.path.join(checkout, ".git", "info", "exclude")
+    if not os.path.isfile(exclude):
+        return
+    try:
+        with open(exclude, encoding="utf-8") as f:
+            have = set(f.read().split())
+        need = [p for p in ("/.claude",) + tuple("/" + n for n in SYNC_ROOT_FILES)
+                if p not in have]
+        if not need:
+            return
+        with open(exclude, "a", encoding="utf-8") as f:
+            f.write("\n# 本地配置，与同仓库其它检出对齐；不入库\n" + "\n".join(need) + "\n")
+    except OSError:
+        pass
+
+
 def copy_in(trunk, target, rel):
-    src = os.path.join(claude_dir(trunk), rel)
-    dst = os.path.join(claude_dir(target), rel)
+    src = resolve(trunk, rel)
+    dst = resolve(target, rel)
     if os.path.isfile(dst):
         # 留一份被盖掉的版本。只有「本地没动过」才会走到这里，正常用不上；
         # 真用上时它是唯一找回途径，所以宁可多存。
@@ -310,7 +351,7 @@ def sync_into(target, trunk, actions, diverged, status_only=False):
         if cur == tr:
             # 已一致（含两边都没有）。记下基线，下次才认得出「本地动没动」。
             if rel in tgt:
-                new_state[rel] = stat_entry(os.path.join(claude_dir(target), rel)) + [cur]
+                new_state[rel] = stat_entry(resolve(target, rel)) + [cur]
             continue
 
         # 「本地没动过」= 本地根本没有，或内容仍等于上次与主干一致时的基线
@@ -320,12 +361,12 @@ def sync_into(target, trunk, actions, diverged, status_only=False):
             if status_only:
                 diverged.append((rel, "本地未动，可跟随主干"))
             elif tr is None:
-                os.remove(os.path.join(claude_dir(target), rel))
+                os.remove(resolve(target, rel))
                 actions.append((rel, "跟随主干删除"))
             else:
                 copy_in(trunk, target, rel)
                 actions.append((rel, "跟随主干更新" if cur is not None else "跟随主干新增"))
-                new_state[rel] = stat_entry(os.path.join(claude_dir(target), rel)) + [tr]
+                new_state[rel] = stat_entry(resolve(target, rel)) + [tr]
             continue
 
         # 本地有改动 → 本分支的工作成果，等合并回主干，不动。
@@ -365,6 +406,7 @@ def main(argv):
 
     actions, diverged = [], []
     if not status_only:
+        ensure_git_exclude(target)
         derealize(target, actions)
     sync_into(target, trunk, actions, diverged, status_only)
 
