@@ -3,30 +3,24 @@
 # 由 launchd 调度（com.tal.claude.skillhealth），也可手动执行。
 # 脚本自定位到本仓库 health/ 目录，报告写进 sibling report/（gitignore 掉）。
 #
-# 两个配置不变量（改了会静默失效，别乱调）：
-#   1. COLD_DAYS 必须 < 转录保留期（Claude Code cleanupPeriodDays，默认 30 天）。
-#      等于或超过保留期时，资产在够冷之前记录就先被清理了，冷门永远判不出来，
-#      报告会一直显示「无例外」——看起来健康，其实是没有数据。
-#   2. DAYS 取保留期本身即可。取更大值不会拿到更早的数据（那部分已被清理），
-#      只是把窗口写大，让「无数据」显得像「无例外」。
+# 巡检参数与摘要判定见 lib.sh（唯一来源，与 status.sh 共用）。
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
 SCAN="$SCRIPT_DIR/scan_skill_usage.py"
 LAYERS="$SCRIPT_DIR/scan_capability_layers.py"
 REPORT_DIR="$SCRIPT_DIR/report"
 REPORT="$REPORT_DIR/skill-health-report.txt"
 HISTORY="$REPORT_DIR/skill-usage-history.jsonl"
 BRIEF="$REPORT_DIR/.brief"
-DAYS=30
-COLD_DAYS=14
 
 mkdir -p "$REPORT_DIR"
 
 # 摘要由脚本写文件，而不是在 shell 里 grep 表格——表格原文塞进通知只会变成噪声
 # （连续空格 + 几十个破折号），且 shell 侧的格式化很脆。
 # 传 --brief-file 与主扫描同一次运行，避免为拿摘要而重跑（重跑会让快照重复落盘）。
-output=$(python3 "$SCAN" --days "$DAYS" --cold-days "$COLD_DAYS" \
+output=$(python3 "$SCAN" --days "$HEALTH_DAYS" --cold-days "$HEALTH_COLD_DAYS" \
            --exceptions-only --snapshot "$HISTORY" --brief-file "$BRIEF.usage" 2>&1)
 usage_brief=$(cat "$BRIEF.usage" 2>/dev/null)
 
@@ -60,14 +54,12 @@ notify() {
 }
 
 # 优先级：需裁决的例外 > 晋升候选 > 退出窗口；「无例外」「无数据」「无晋升候选」静默
-#
-# 判定必须匹配**数量前缀**（`^N 个…`），不能只匹配「待裁决」「晋升候选」「退出窗口」
-# 这几个词——摘要里「**无**待裁决；N 个退出窗口」「**无**晋升候选」都含这些词，
-# 只匹配词会让队列为空时照样弹通知（实测踩过：两个队列都空，通知照弹）。
-if printf '%s' "$usage_brief" | grep -qE '^[0-9]+ 个待裁决'; then
+usage_level="$(health_brief_level "$usage_brief")"
+layers_level="$(health_brief_level "$layers_brief")"
+if [ "$usage_level" = "待裁决" ]; then
   notify "Skill 健康巡检：需裁决" "$usage_brief"
-elif printf '%s' "$layers_brief" | grep -qE '^[0-9]+ 个晋升候选'; then
+elif [ "$layers_level" = "晋升候选" ]; then
   notify "能力分层巡检：晋升候选" "$layers_brief"
-elif printf '%s' "$usage_brief" | grep -qE '[0-9]+ 个退出窗口'; then
+elif [ "$usage_level" = "退出窗口" ]; then
   notify "Skill 健康巡检：资产退出窗口" "$usage_brief"
 fi

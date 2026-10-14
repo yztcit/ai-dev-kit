@@ -18,6 +18,10 @@ VERBOSE=0
 [ "${1:-}" = "-v" ] && VERBOSE=1
 rc=0
 
+# 巡检参数与摘要判定来自 health/lib.sh，与定时巡检共用同一份——判定写两遍就会漂移，
+# 之前正是这样：一边 grep 摘要、一边 grep 正文，本命令因此恒报「无例外」。
+source "$REPO/health/lib.sh"
+
 echo "── 体系自检 ──"
 
 # 分三态判定：已加载 / 未加载 / 查不了。不能把「查不了」报成「未加载」——
@@ -54,12 +58,35 @@ fi
 echo ""
 echo "── 待处理 ──"
 
-exc="$(python3 "$SCRIPTS/scan_skill_usage.py" --exceptions-only 2>&1)"
-if printf '%s' "$exc" | grep -qE '^[0-9]+ 个待裁决'; then
-  echo "  ⚠ 例外队列：$(printf '%s' "$exc" | grep -E '^[0-9]+ 个待裁决' | head -1)"; rc=1
+# 判定取 --brief-file 的**摘要**，不能 grep --exceptions-only 的正文：正文首行是表头，
+# 「N 个待裁决」这行只在摘要里，grep 正文恒不匹配 → 例外队列恒报「无」。
+# 摘要与正文出自同一次扫描（--brief-file 不抑制正文），不重跑、不重复落快照。
+#
+# 此处刻意不传 --snapshot：写快照是定时巡检的职责，本命令只读，重跑会让时间序列失真。
+# 代价是这里看不到「退出窗口」（它靠对比上一轮快照得出），该信号由每周通知负责。
+usage_brief_file="$(mktemp)"
+exc="$(python3 "$SCRIPTS/scan_skill_usage.py" \
+         --days "$HEALTH_DAYS" --cold-days "$HEALTH_COLD_DAYS" \
+         --exceptions-only --brief-file "$usage_brief_file" 2>&1)"
+usage_brief="$(cat "$usage_brief_file" 2>/dev/null)"
+rm -f "$usage_brief_file"
+if [ -n "$(health_brief_level "$usage_brief")" ]; then
+  echo "  ⚠ 例外队列：$usage_brief"; rc=1
   [ "$VERBOSE" = 1 ] && printf '%s\n' "$exc" | sed 's/^/    /'
 else
-  echo "  ✓ 例外队列：无"
+  echo "  ✓ 例外队列：$usage_brief"
+fi
+
+# 晋升候选同样会弹通知（优先级次于例外），本命令不报就会重演「通知弹了 health 说没有」
+layers_brief_file="$(mktemp)"
+layers="$(python3 "$SCRIPTS/scan_capability_layers.py" --brief-file "$layers_brief_file" 2>&1)"
+layers_brief="$(cat "$layers_brief_file" 2>/dev/null)"
+rm -f "$layers_brief_file"
+if [ "$(health_brief_level "$layers_brief")" = "晋升候选" ]; then
+  echo "  ⚠ 晋升候选：$layers_brief"; rc=1
+  [ "$VERBOSE" = 1 ] && printf '%s\n' "$layers" | sed 's/^/    /'
+else
+  echo "  ✓ 晋升候选：无"
 fi
 
 due="$(python3 "$SCRIPTS/decision_log.py" due 2>&1)"
