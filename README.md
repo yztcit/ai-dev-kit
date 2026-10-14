@@ -311,5 +311,6 @@ python3 ~/.claude/scripts/decision_log.py due     # ttl 到期的 keep，需重�
 ## 当前状态
 
 - `plugins/video` 已落地：`video-pe` 视频生成请求整理。
+- `shared-config/` 已落地：同一仓库多个检出的 `.claude` 与 `CLAUDE.md` 按「主干权威、分支各自演进」对齐，`SessionStart` hook 自动跑（见上）。
 - `health/` 已落地（流水线 A）。巡检报告与快照写入 `health/report/`（不共享，派生自本机转录）；**决策日志全部存本机**（`~/.claude/health-decisions.jsonl`，工具不往任何仓库写）。覆盖已从「仅 Skill」扩到「Skill + Agent」，并补齐失败信号、快照、晋升候选检测与「裁决后退出队列」的闭环。
 - **未落地**：流水线 B（回归门禁，judge 打分 + 冻结基线）、流水线 C（官方/依赖漂移检测）。B 是唯一能产出「更好」的环节——A 只能告诉谁没人用，说不出谁做得好。
