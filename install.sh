@@ -19,7 +19,14 @@ else
   echo "⚠️  未找到可执行的 health/install.sh，跳过"
 fi
 
-# --- 2. conventions：用户级规则 ---
+# --- 2. shared-config：多检出共用一份 .claude（SessionStart hook 自动对齐） ---
+if [ -x "$REPO_ROOT/shared-config/install.sh" ]; then
+  bash "$REPO_ROOT/shared-config/install.sh"
+else
+  echo "⚠️  未找到可执行的 shared-config/install.sh，跳过"
+fi
+
+# --- 3. conventions：用户级规则 ---
 # 交付方式：软链到用户级 rules（原生加载，声明式，无执行）。
 # 与 plugins/conventions 插件是**同一份内容**——插件面向分发，规则面向本机。
 # ⚠️ 不要同时启用插件与规则，否则同一内容加载两遍。
@@ -28,7 +35,7 @@ mkdir -p "$RULES_DIR"
 ln -sf "$REPO_ROOT/plugins/conventions/CONVENTIONS.md" "$RULES_DIR/conventions.md"
 echo "✓ 用户级规则已就绪：$RULES_DIR/conventions.md"
 
-# --- 3. health 命令：状态一览入口 ---
+# --- 4. health 命令：状态一览入口 ---
 # 放在 ~/.local/bin（已在 PATH；uv/graphify 等也在此，与本工具依赖同处）。
 # 装了它就能在任何地方直接跑 `health`，不必记路径、也不必问 Claude。
 BIN_DIR="$HOME/.local/bin"
