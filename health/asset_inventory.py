@@ -19,7 +19,9 @@
 """
 import hashlib
 import os
+import re
 import subprocess
+from urllib.parse import urlsplit
 
 HOME = os.path.expanduser("~")
 MARKETPLACES = os.path.join(HOME, ".claude", "plugins", "marketplaces")
@@ -49,6 +51,29 @@ BUILTIN = "builtin"
 EXTERNAL_MARKETPLACES = {"claude-plugins-official"}
 
 
+def normalize_remote(url):
+    """git remote URL → `host/path`（去协议、去凭据、去用户、去 .git、统一小写）。
+
+    必须归一化：同一仓库用 https / ssh / 带凭据等不同 URL 克隆时，原样比较会把
+    副本当成两个项目。实测踩过——同一项目两个检出，一个 https 一个 ssh，项目层
+    同名资产被判成「跨项目重复」，5 个能力凭空进了晋升候选（假信号）。
+    """
+    url = (url or "").strip()
+    if not url:
+        return ""
+    # scp 风格 `git@host:path`（不含 ://），其余交给 urlsplit
+    m = re.match(r"^(?:[^@/]+@)?([^:/]+):(.+)$", url)
+    if m and "://" not in url:
+        host, path = m.group(1), m.group(2)
+    else:
+        parts = urlsplit(url)
+        host, path = parts.hostname or "", parts.path
+    path = path.strip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    return f"{host}/{path}".lower()
+
+
 def repo_identity(project_root):
     """用 git remote 判断「同一个项目的多份副本」，避免把副本算成两个项目。"""
     try:
@@ -57,7 +82,7 @@ def repo_identity(project_root):
             capture_output=True, text=True, timeout=5).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         url = ""
-    return url or os.path.realpath(project_root)
+    return normalize_remote(url) or os.path.realpath(project_root)
 
 
 def find_project_claude_dirs(root):
