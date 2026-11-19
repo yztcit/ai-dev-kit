@@ -48,19 +48,11 @@ def maybe_print_personal_fact(kb, entry_dir, branch, config):
             return
 
 
-def maybe_print_techniques(hit, plugin_dir):
-    results = hit.match_index(
-        "",
-        index_path=os.environ.get("EXPERIENCE_TECHNIQUES_INDEX")
-        or str(plugin_dir / "techniques" / "index.json"),
-        allowed_strengths=("repeated", "used"),
-        limit=5,
-    )
-    if not results:
+def maybe_print_techniques(hit):
+    count = hit.count_personal_entries(allowed_strengths=("repeated", "used"))
+    if count <= 0:
         return
-    print("[technique] 开场高优先技巧:")
-    for path in results:
-        print(f"  - {path}")
+    print(f"[technique] 已有 {count} 张个人技巧卡可按需调用。")
 
 
 def maybe_run_fallback(kb, engine_dir):
@@ -77,8 +69,10 @@ def main():
     memory_paths = load_module("experience_memory_paths", engine_dir / "memory_paths.py", extra_sys_path=engine_dir)
     kb = load_module("experience_kb", engine_dir / "kb", extra_sys_path=engine_dir)
     hit = load_module("experience_hit_techniques", engine_dir / "hit_techniques.py", extra_sys_path=engine_dir)
+    bootstrap = load_module("experience_bootstrap_seeds", engine_dir / "bootstrap_seeds.py", extra_sys_path=engine_dir)
 
     memory_paths.ensure_layout()
+    bootstrap.ensure_seed_techniques(plugin_dir)
     code, lines = kb.sync(checkout, quiet=True)
     for line in lines:
         print(line)
@@ -100,7 +94,7 @@ def main():
     branch = kb.current_branch(checkout)
     config = kb.parse_kb_yml(os.path.join(entry_dir, "kb.yml"))
     maybe_print_personal_fact(kb, entry_dir, branch, config)
-    maybe_print_techniques(hit, plugin_dir)
+    maybe_print_techniques(hit)
     return 0
 
 

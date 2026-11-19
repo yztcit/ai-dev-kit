@@ -60,6 +60,68 @@ class HitTechniquesTests(unittest.TestCase):
 
         self.assertEqual(matched, ["used.md", "hypothesis.md"])
 
+    def test_empty_text_does_not_match_any_trigger(self):
+        module = load_python_file(HIT_TECHNIQUES_PATH, extra_sys_path=ENGINE_DIR)
+
+        matched = module.match(
+            [
+                {"path": "used.md", "triggers": ["refactor"], "strength": "used"},
+                {"path": "repeated.md", "triggers": ["plan"], "strength": "repeated"},
+            ],
+            "",
+        )
+
+        self.assertEqual(matched, [])
+
+    def test_match_index_merges_bundled_and_personal_indexes(self):
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            bundled_index = td_path / "bundled.json"
+            memory_root = td_path / "memory"
+            personal_index = memory_root / "methods-personal" / "index.json"
+            write(
+                bundled_index,
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "entries": [
+                            {"path": "shareable.md", "triggers": ["refactor"], "strength": "used"},
+                        ],
+                    }
+                )
+                + "\n",
+            )
+            write(
+                personal_index,
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "entries": [
+                            {"path": "personal.md", "triggers": ["refactor"], "strength": "repeated"},
+                        ],
+                    }
+                )
+                + "\n",
+            )
+            old_bundled = os.environ.get("EXPERIENCE_TECHNIQUES_INDEX")
+            old_memory_root = os.environ.get("DEV_MEMORY_ROOT")
+            os.environ["EXPERIENCE_TECHNIQUES_INDEX"] = str(bundled_index)
+            os.environ["DEV_MEMORY_ROOT"] = str(memory_root)
+            try:
+                module = load_python_file(HIT_TECHNIQUES_PATH, extra_sys_path=ENGINE_DIR)
+                matched = module.match_index("Need refactor advice")
+            finally:
+                if old_bundled is None:
+                    os.environ.pop("EXPERIENCE_TECHNIQUES_INDEX", None)
+                else:
+                    os.environ["EXPERIENCE_TECHNIQUES_INDEX"] = old_bundled
+                if old_memory_root is None:
+                    os.environ.pop("DEV_MEMORY_ROOT", None)
+                else:
+                    os.environ["DEV_MEMORY_ROOT"] = old_memory_root
+
+        self.assertEqual(matched, ["personal.md", "shareable.md"])
+
 
 class SessionStartTests(unittest.TestCase):
     def make_repo(self, root):
@@ -85,7 +147,7 @@ class SessionStartTests(unittest.TestCase):
             env=env,
         )
 
-    def test_registered_team_tracked_repo_prints_personal_fact_and_techniques(self):
+    def test_registered_team_tracked_repo_prints_personal_fact_and_technique_count(self):
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)
             memory_root = td_path / "memory"
@@ -117,8 +179,20 @@ class SessionStartTests(unittest.TestCase):
                     {
                         "schema": 1,
                         "entries": [
-                            {"path": "t1.md", "triggers": ["unused"], "strength": "used"},
-                            {"path": "t2.md", "triggers": ["unused"], "strength": "repeated"},
+                            {"path": "shareable.md", "triggers": ["unused"], "strength": "used"},
+                        ],
+                    }
+                )
+                + "\n",
+            )
+            write(
+                memory_root / "methods-personal" / "index.json",
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "entries": [
+                            {"path": "personal-a.md", "triggers": ["unused"], "strength": "used"},
+                            {"path": "personal-b.md", "triggers": ["unused"], "strength": "repeated"},
                         ],
                     }
                 )
@@ -131,6 +205,9 @@ class SessionStartTests(unittest.TestCase):
             self.assertIn("[personal-fact]", result.stdout)
             self.assertIn("PERSONAL.md", result.stdout)
             self.assertIn("[technique]", result.stdout)
+            self.assertIn("2 张个人技巧卡", result.stdout)
+            self.assertNotIn("shareable.md", result.stdout)
+            self.assertNotIn("personal-a.md", result.stdout)
             self.assertNotIn("未接入", result.stdout)
 
     def test_unregistered_repo_prints_onboarding_choices(self):

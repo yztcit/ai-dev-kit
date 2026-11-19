@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 
-
 DEFAULT_INDEX_PATH = Path(__file__).resolve().parents[1] / "techniques" / "index.json"
 STRENGTH_RANK = {
     "repeated": 0,
@@ -15,7 +14,30 @@ STRENGTH_RANK = {
 
 
 def load_index(index_path=None):
-    path = Path(index_path or os.environ.get("EXPERIENCE_TECHNIQUES_INDEX") or DEFAULT_INDEX_PATH)
+    if index_path:
+        return _load_one_index(index_path)
+    entries = []
+    for path in _default_index_paths():
+        entries.extend(normalize_entries(_load_one_index(path)))
+    return {"schema": 1, "entries": entries}
+
+
+def _default_index_paths():
+    bundled = Path(os.environ.get("EXPERIENCE_TECHNIQUES_INDEX") or DEFAULT_INDEX_PATH)
+    paths = [bundled, personal_index_path()]
+    unique_paths = []
+    seen = set()
+    for path in paths:
+        key = str(Path(path))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_paths.append(Path(path))
+    return unique_paths
+
+
+def _load_one_index(index_path):
+    path = Path(index_path)
     try:
         with path.open(encoding="utf-8") as f:
             data = json.load(f)
@@ -24,6 +46,18 @@ def load_index(index_path=None):
     except (OSError, ValueError):
         pass
     return {"schema": 1, "entries": []}
+
+
+def memory_root():
+    return Path(
+        os.path.realpath(
+            os.environ.get("DEV_MEMORY_ROOT") or (Path.home() / ".local" / "share" / "dev-memory")
+        )
+    )
+
+
+def personal_index_path():
+    return memory_root() / "methods-personal" / "index.json"
 
 
 def normalize_entries(triggers):
@@ -47,13 +81,22 @@ def _strength_allowed(strength, allowed_strengths):
 def _entry_matches(entry, text):
     text = (text or "").strip()
     if not text:
-        return True
+        return False
     haystack = text.lower()
     for trigger in entry.get("triggers") or []:
         needle = str(trigger).strip().lower()
         if needle and needle in haystack:
             return True
     return False
+
+
+def count_personal_entries(allowed_strengths=None):
+    count = 0
+    for entry in normalize_entries(_load_one_index(personal_index_path())):
+        strength = (entry.get("strength") or "hypothesis").strip().lower()
+        if _strength_allowed(strength, allowed_strengths):
+            count += 1
+    return count
 
 
 def match(triggers, text, allowed_strengths=None, limit=None):

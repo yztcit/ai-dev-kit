@@ -11,7 +11,8 @@
 ```
 
 安装后会自动注册 `SessionStart` hook，实际执行脚本为 `hooks/session_start.sh`。
-这个 hook 会先同步当前检出到本机 dev-memory，再按需输出未接入提示、`team-tracked` 个人事实提示和高优先技巧。
+这个 hook 会先同步当前检出到本机 dev-memory，再按需输出未接入提示、`team-tracked` 个人事实提示和个人技巧卡数量。
+插件内 `techniques/` 目录只保留可分享的公开技巧索引；内置 seed 会从 `seed_techniques/` 首次复制到本机 `methods-personal/`，不会直接作为公开技巧包暴露。
 
 ## MEMORY_ROOT
 

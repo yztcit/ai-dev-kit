@@ -80,7 +80,7 @@ io_contract:
 
 ## `methods-personal` 卡片格式
 
-建议使用统一的卡片头，并和 `techniques/index.json` 保持一致：
+建议使用统一的卡片头，并和 `MEMORY_ROOT/methods-personal/index.json` 保持一致：
 
 ```md
 ---
@@ -98,14 +98,16 @@ strength: hypothesis
 ## 来源
 ```
 
-写入或更新卡片时，必须同步检查 `plugins/experience/techniques/index.json`：
+写入或更新卡片时，必须同步检查 `MEMORY_ROOT/methods-personal/index.json`：
 
 - `path` 指向这张卡的实际路径。
 - `triggers` 与卡片头保持一致。
 - `strength` 与卡片头保持一致。
 - 如果卡片触发词、强度或路径变了，索引要同一轮更新，不能留旧值。
 
-## `techniques/index.json` 更新要求
+公开插件包内的 `plugins/experience/techniques/index.json` 只保留可分享技巧；个人 Technique 不要写到这里。
+
+## `methods-personal/index.json` 更新要求
 
 `index.json` 是命中入口，格式保持为条目数组，每个条目至少包含：
 
@@ -125,6 +127,6 @@ strength: hypothesis
 - Fact、Technique、plans 已明确分开。
 - plans 里没有 `kind` 的条目都已经先问。
 - Technique 卡都有反例。
-- `methods-personal` 与 `techniques/index.json` 没有漂移。
+- `methods-personal` 与 `methods-personal/index.json` 没有漂移。
 - team-tracked 场景没有出现“覆盖 CLAUDE.md”这种不必要的表述。
 
