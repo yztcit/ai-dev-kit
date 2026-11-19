@@ -10,9 +10,14 @@
 /plugin install experience@ai-dev-kit
 ```
 
-安装后会自动注册 `SessionStart` hook，实际执行脚本为 `hooks/session_start.sh`。
-这个 hook 会先同步当前检出到本机 dev-memory，再按需输出未接入提示、`team-tracked` 个人事实提示和个人技巧卡数量。
-插件内 `techniques/` 目录只保留可分享的公开技巧索引；内置 seed 会从 `seed_techniques/` 首次复制到本机 `methods-personal/`，不会直接作为公开技巧包暴露。
+安装后会注册：
+
+- `SessionStart` → `hooks/session_start.sh`：同步本机 Fact、未接入提示、个人技巧数量等  
+- `UserPromptSubmit` → `hooks/prompt_hit.sh`：按用户话术触发词匹配 `methods-personal` / 公开技巧，并注入 `[experience-technique]` 路径（须 Read 后执行；勿只引用项目 MEMORY）
+
+本机若未走 plugin 安装、只改了 `~/.claude/settings.json`，也需同时挂上上述两条。
+
+插件内 `techniques/` 只保留可分享公开索引；seed 在 `seed_techniques/`，首次复制到本机 `methods-personal/`。
 
 ## MEMORY_ROOT
 
