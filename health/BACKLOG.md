@@ -54,18 +54,12 @@
 
 - **现象**：跨项目通用的偏好被**多个项目各沉淀一份**；会话产生的经验不自动沉淀，靠 Claude
   自决会漏（实测：某轮会话的新事实一条没进 memory）。
-- **已完成（2026-09-23）**：
-  1. **建归宿**——工作约定类进 `conventions` 资产；个人专属进 `~/.claude/CLAUDE.md`（已瘦身）。
-  2. **修通路**——原计划「另建个人私有仓库」**已被推翻**：内容作为资产存在 `ai-dev-kit`
-     仓库，本机 `~/.claude/rules/conventions.md` 软链过去，`install.sh` 一键装好。详见 #5。
-  3. **判据盲测**——两个全新 agent、中性 prompt、无答案泄漏。**判据成立**：recall 命中已知
-     纠正（「不是关到私人仓库」），并且**捞出一条真漏**「先查清再做」（已补进 `CONVENTIONS.md`）。
-- **设计已补（2026-11-19）**：完整闭环见根目录 `EXPERIENCE-COMPOUNDING.md`
-  （Scratch/Fact/Technique/Playbook、本机 Fact、捕获 D、人裁决、V1 切片）。
-  其中「周检扫偏好」仍可做，但主路径改为**写入时刻拆分**，不再把希望寄在事后全量扫描。
-- **剩下：按 EXPERIENCE-COMPOUNDING V1 实施**（合规去业务 + 沉淀 skill + 触发词命中）。
-  旧「并入周检的扫描机制」降为辅助；查重仍须覆盖全部载体、只收工作约定。
-- **触发条件**：开始实施经验复利 V1 时（用户确认设计后）；或周检噪声可接受时先接辅助扫描。
+- **已完成（2026-11-19）**：
+  1. **V1 运行时已落地**——`plugins/experience` 承载 `kb`、`SessionStart` hook、`note` / `deposit` skills、`techniques/index.json` 命中与 `~/.local/share/dev-memory` 布局。
+  2. **公开树已退役**——`personal-kb` 的业务内容已清理并重定向，经验侧不再依赖旧公开业务目录。
+  3. **主路径已切换**——经验写入改为“写入时刻拆分”，周检只保留为辅助，不再把闭环寄托在事后全量扫描。
+- **剩余项**：`plans` 自动巡检仍 deferred；历史 scrub 只保留为退役收尾与留档说明，不阻塞 V1。
+- **触发条件**：需要补充 `plans` 自动巡检、或发现经验侧路径与插件实现再次漂移时。
 - **证据在哪**：`DESIGN.md` §八；`EXPERIENCE-COMPOUNDING.md`。
 
 ## 5. conventions 插件的 hook 路径未实机验证

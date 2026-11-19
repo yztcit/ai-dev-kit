@@ -56,6 +56,21 @@ health -v     # 展开明细
 > ⚠️ **hook 路径未实机验证**（从未在真实环境装过）。对外分发前先装一次实测。
 > 内容本身通用（纯 markdown，可搬到任何平台），只有**交付方式**绑 Claude（见 `DESIGN.md` §三）。
 
+## experience：经验复利运行时
+
+`plugins/experience` 承载本机 `Fact`、`Technique` 和沉淀流程，包内不放业务内容。安装后用：
+
+```bash
+/plugin install experience@ai-dev-kit
+```
+
+这个插件会在 `SessionStart` 时跑 hook：同步当前检出、提示未接入仓、并在 `team-tracked` 场景下提示个人补充事实和高优先技巧。
+
+- 唯一运行时根目录：`~/.local/share/dev-memory`
+- 可用 `DEV_MEMORY_ROOT` 覆盖
+- 目录布局：`facts/`、`methods-personal/`、`scratch/`、`inbox/{facts,methods}/`、`index.json`
+- 设计与细节见 [`EXPERIENCE-COMPOUNDING.md`](EXPERIENCE-COMPOUNDING.md) 与 [`plugins/experience/README.md`](plugins/experience/README.md)
+
 ## video/：视频生成请求整理
 
 `plugins/video` 提供跨项目通用的视频提示词整理能力，不含具体模型/产品语境。

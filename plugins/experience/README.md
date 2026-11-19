@@ -10,6 +10,9 @@
 /plugin install experience@ai-dev-kit
 ```
 
+安装后会自动注册 `SessionStart` hook，实际执行脚本为 `hooks/session_start.sh`。
+这个 hook 会先同步当前检出到本机 dev-memory，再按需输出未接入提示、`team-tracked` 个人事实提示和高优先技巧。
+
 ## MEMORY_ROOT
 
 默认运行时根目录为：
@@ -28,3 +31,5 @@
 - `inbox/facts/`
 - `inbox/methods/`
 - `index.json`
+
+如果需要覆盖默认根目录，设置 `DEV_MEMORY_ROOT` 即可。

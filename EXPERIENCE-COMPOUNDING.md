@@ -4,6 +4,7 @@
 读者：独立评审者；无需事先了解某业务仓库  
 地位：补齐 `DESIGN.md` §八「经验侧」；与放置侧（plugin/skill 分层）同构  
 实施计划：`plans/2026-11-19-experience-compounding.md`
+补充说明：V1 运行时已在 `plugins/experience` 落地；本文继续保留设计、路径约定与未完成项。
 
 ---
 
