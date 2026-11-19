@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# UserPromptSubmit: match techniques against the user prompt and inject hints.
+# UserPromptSubmit: match techniques and inject via hookSpecificOutput.additionalContext.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ENGINE_DIR="${PLUGIN_DIR}/engine"
 
-# Claude feeds JSON on stdin; capture BEFORE starting python (heredoc would steal it).
 INPUT="$(cat || true)"
 
 EXPERIENCE_PROMPT_JSON="$INPUT" python3 - "$ENGINE_DIR" "$PLUGIN_DIR" <<'PY'
@@ -70,6 +69,25 @@ def resolve_card(path_str, personal_dir, techniques_dir, seed_dir):
     return None
 
 
+def card_body(path):
+    text = Path(path).read_text(encoding="utf-8")
+    # Strip YAML frontmatter for the injected reminder (keep readable body).
+    lines = text.splitlines()
+    if lines and lines[0].strip() == "---":
+        end = None
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                end = i
+                break
+        if end is not None:
+            text = "\n".join(lines[end + 1 :]).strip()
+    # Keep under typical hook field budget with headroom for wrapper text.
+    max_body = 7000
+    if len(text) > max_body:
+        text = text[:max_body] + "\n…(truncated)"
+    return text
+
+
 def main():
     engine_dir = Path(sys.argv[1]).resolve()
     plugin_dir = Path(sys.argv[2]).resolve()
@@ -89,7 +107,7 @@ def main():
     )
     memory_paths.ensure_layout()
 
-    paths = hit.match_index(prompt, allowed_strengths=None, limit=5)
+    paths = hit.match_index(prompt, allowed_strengths=None, limit=3)
     if not paths:
         return
 
@@ -104,19 +122,47 @@ def main():
         by_path[rel] = entry
         by_path[Path(rel).name] = entry
 
-    print(
-        "[experience-technique] 以下技巧卡与当前话术触发匹配；"
-        "请优先 Read 后按卡执行（勿仅引用项目 MEMORY）："
-    )
+    blocks = []
     for rel in paths:
         entry = by_path.get(rel) or by_path.get(Path(rel).name) or {}
         strength = (entry.get("strength") or "hypothesis").strip().lower()
         card = resolve_card(rel, personal_dir, techniques_dir, seed_dir)
-        label = "未验证假设" if strength == "hypothesis" else strength
         if card is None:
-            print("  - (%s) %s （文件未找到）" % (label, rel))
             continue
-        print("  - (%s) %s" % (label, card))
+        label = "hypothesis/unverified" if strength == "hypothesis" else strength
+        body = card_body(card)
+        blocks.append(
+            "Matched experience technique (%s): %s\n\n%s"
+            % (label, card, body)
+        )
+
+    if not blocks:
+        return
+
+    # Factual reminder (not imperative "system command") so Claude uses it rather
+    # than treating it as prompt injection. Authority is the experience card.
+    context = (
+        "Experience technique match for this user message. "
+        "Authoritative source for this method is the experience technique card "
+        "under ~/.local/share/dev-memory/methods-personal (or bundled techniques). "
+        "Project auto-memory files with similar wording are secondary echoes, "
+        "not the source of truth, and this turn does not require re-saving the "
+        "same discipline into project MEMORY.\n\n"
+        + "\n\n-----\n\n".join(blocks)
+    )
+
+    # Only JSON on stdout — required for UserPromptSubmit structured injection.
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "UserPromptSubmit",
+                    "additionalContext": context,
+                }
+            },
+            ensure_ascii=False,
+        )
+    )
 
 
 if __name__ == "__main__":
