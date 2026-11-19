@@ -96,6 +96,22 @@ else
   echo "  ✓ 待复查裁决：无"
 fi
 
+# 个人扩展检查器挂载点：通用层不预置任何个人检查，只提供入口。
+# 约定：$SCRIPTS/health.d/<name>.sh 输出一行摘要，退出码非 0 表示需要关注。
+# 没有这个目录就是没有扩展，不算异常。
+if [ -d "$SCRIPTS/health.d" ]; then
+  for chk in "$SCRIPTS"/health.d/*.sh; do
+    [ -x "$chk" ] || continue
+    out="$("$chk" 2>&1)"; code=$?
+    label="$(basename "$chk" .sh)"
+    if [ "$code" -ne 0 ]; then
+      echo "  ⚠ $label：$out"; rc=1
+    else
+      echo "  ✓ $label：$out"
+    fi
+  done
+fi
+
 n="$(grep -cE '^## [0-9]+\.' "$BACKLOG" 2>/dev/null || echo 0)"
 echo "  · 未接入项：$n 项"
 if [ "$VERBOSE" = 1 ]; then
