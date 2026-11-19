@@ -1,0 +1,923 @@
+#!/usr/bin/env python3
+"""experience kb —— 按仓库身份寻址的本机 facts 引擎。
+
+同一仓库的所有检出共享一份权威知识；检出里的 .claude/ 是渲染出来的投影。
+
+    ~/.local/share/dev-memory/
+      index.json                    仓库身份 → 条目目录
+      facts/<host>/<group>/<repo>/
+        kb.yml                      条目配置
+        base/                       主干现实，唯一可写处
+        branches/<branch>/          分支覆盖层，仅该分支可见
+
+检出里的 .claude/ 与 CLAUDE.md 由 `kb sync` 渲染（base ∪ 覆盖层）。它们是构建产物，
+不是副本：手工改动会被检测、备份、然后覆盖。唯一可写处是 KB。
+
+会话开始由 SessionStart hook 调用 `kb hook`；未登记的仓库回退到调用方指定的旧同步脚本。
+"""
+import difflib
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+from memory_paths import ensure_layout, facts_root, index_path as memory_index_path
+
+HOME = os.path.expanduser("~")
+MEMORY_ROOT = ensure_layout()
+KB_ROOT = MEMORY_ROOT
+CACHE_DIR = os.path.join(HOME, ".cache", "experience-kb")
+STATE_DIR = ".claude"
+STATE_FILE = ".kb-state.json"
+BACKUP_DIR = ".kb-backup"
+ROOT_FILES = ("CLAUDE.md", "AGENTS.md")
+DEFAULT_FALLBACK = os.path.join(HOME, "workspace", "AI-dev-kit", "shared-config", "sync.py")
+DEFAULT_MAX_BEHIND = 200
+DEFAULT_BRANCH_STALE_DAYS = 45
+
+
+# ------------------------------------------------------------------ 身份
+
+def normalize_remote(url):
+    u = (url or "").strip().rstrip("/")
+    if not u:
+        return ""
+    if u.endswith(".git"):
+        u = u[:-4]
+    if "://" in u:
+        u = u.split("://", 1)[1]
+        u = u.rsplit("@", 1)[-1]
+        host, _, path = u.partition("/")
+        return f"{host.lower()}/{path.strip('/')}"
+    head, sep, path = u.partition(":")
+    if sep and "@" in head:
+        return f"{head.rsplit('@', 1)[-1].lower()}/{path.strip('/')}"
+    return u.strip("/").lower()
+
+
+def _git_dir(checkout):
+    dot = os.path.join(checkout, ".git")
+    if os.path.isdir(dot):
+        return dot
+    if os.path.isfile(dot):
+        try:
+            with open(dot, encoding="utf-8", errors="replace") as f:
+                line = f.readline().strip()
+        except OSError:
+            return ""
+        if not line.startswith("gitdir:"):
+            return ""
+        gd = line.split(":", 1)[1].strip()
+        return gd if os.path.isabs(gd) else os.path.join(checkout, gd)
+    return ""
+
+
+def repo_identity(checkout):
+    """归一化 remote。直接读 .git/config，不 fork git——hook 每次会话都跑。"""
+    gd = _git_dir(checkout)
+    if not gd:
+        return ""
+    cfg = os.path.join(gd, "config")
+    if not os.path.isfile(cfg):
+        return ""
+    section = ""
+    try:
+        with open(cfg, encoding="utf-8", errors="replace") as f:
+            for raw in f:
+                s = raw.strip()
+                if s.startswith("["):
+                    section = s.split("]", 1)[0].strip().lower() + "]"
+                elif section == '[remote "origin"]' and s.lower().startswith("url"):
+                    return normalize_remote(s.split("=", 1)[1])
+    except (OSError, IndexError):
+        return ""
+    return ""
+
+
+def current_branch(checkout):
+    gd = _git_dir(checkout)
+    if not gd:
+        return ""
+    try:
+        with open(os.path.join(gd, "HEAD"), encoding="utf-8", errors="replace") as f:
+            ref = f.read().strip()
+    except OSError:
+        return ""
+    return ref.split("refs/heads/", 1)[1] if ref.startswith("ref: refs/heads/") else ""
+
+
+# ------------------------------------------------------------------ 条目
+
+def index_path():
+    return memory_index_path()
+
+
+def load_index_doc():
+    try:
+        with open(index_path(), encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+    except (OSError, ValueError):
+        pass
+    return {"schema": 1, "entries": {}, "never_remind": []}
+
+
+def load_index():
+    data = load_index_doc()
+    entries = data.get("entries", {})
+    if entries:
+        return entries
+    return rebuild_index()
+
+
+def entry_path(key):
+    return os.path.join(facts_root(), *key.split("/"))
+
+
+def rebuild_index():
+    entries = {}
+    base = facts_root()
+    if os.path.isdir(base):
+        for dirpath, _dirs, files in os.walk(base):
+            if "kb.yml" not in files:
+                continue
+            rel = os.path.relpath(dirpath, KB_ROOT).replace(os.sep, "/")
+            key = os.path.relpath(dirpath, base).replace(os.sep, "/")
+            entries[key] = rel
+            for alias in parse_kb_yml(os.path.join(dirpath, "kb.yml")).get("aliases", []):
+                if alias:
+                    entries[alias] = rel
+    data = load_index_doc()
+    data["schema"] = data.get("schema", 1) or 1
+    data["entries"] = entries
+    data.setdefault("never_remind", [])
+    save_json(index_path(), data)
+    return entries
+
+
+def lookup(checkout):
+    key = repo_identity(checkout)
+    if not key:
+        return None, None
+    rel = load_index().get(key)
+    if not rel:
+        return key, None
+    return key, os.path.join(KB_ROOT, rel)
+
+
+def format_kb_value(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, list):
+        return ", ".join(str(v) for v in value)
+    return str(value)
+
+
+def save_kb_yml(path, data):
+    order = [
+        "schema",
+        "name",
+        "overlay",
+        "agents_md",
+        "max_commits_behind",
+        "branch_stale_days",
+        "aliases",
+    ]
+    lines = []
+    written = set()
+    for key in order:
+        if key in data:
+            lines.append(f"{key}: {format_kb_value(data[key])}\n")
+            written.add(key)
+    for key in sorted(k for k in data if k not in written):
+        lines.append(f"{key}: {format_kb_value(data[key])}\n")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+
+def update_overlay(entry_dir, overlay):
+    cfg = os.path.join(entry_dir, "kb.yml")
+    data = parse_kb_yml(cfg)
+    if data.get("overlay") == overlay:
+        return data
+    data["overlay"] = overlay
+    save_kb_yml(cfg, data)
+    return data
+
+
+def parse_kb_yml(path):
+    """极简 key: value 解析，不引 PyYAML——KB 要能单文件拷到任何机器。"""
+    out = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            for raw in f:
+                line = raw.split("#", 1)[0].strip()
+                if not line or ":" not in line:
+                    continue
+                k, v = line.split(":", 1)
+                v = v.strip()
+                if v.lower() in ("true", "false"):
+                    out[k.strip()] = v.lower() == "true"
+                elif v.isdigit():
+                    out[k.strip()] = int(v)
+                else:
+                    out[k.strip()] = v
+    except OSError:
+        pass
+    out.setdefault("aliases", [])
+    if isinstance(out["aliases"], str):
+        out["aliases"] = [a.strip() for a in out["aliases"].split(",") if a.strip()]
+    return out
+
+
+# ------------------------------------------------------------------ 投影
+
+def sha_bytes(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def sha_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def walk_files(root):
+    for dirpath, dirnames, files in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in (".git", BACKUP_DIR, "__pycache__"))
+        for name in sorted(files):
+            if name.startswith(".") and name not in ROOT_FILES:
+                continue
+            full = os.path.join(dirpath, name)
+            yield os.path.relpath(full, root).replace(os.sep, "/"), full
+
+
+def git_rel(path, checkout):
+    return os.path.relpath(path, checkout).replace(os.sep, "/")
+
+
+def is_git_tracked(checkout, rel):
+    try:
+        result = subprocess.run(
+            ["git", "-C", checkout, "ls-files", "--error-unmatch", "--", rel],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def has_tracked_under(checkout, rel):
+    try:
+        result = subprocess.run(
+            ["git", "-C", checkout, "ls-files", "--", rel],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0 and bool(result.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def detect_overlay(checkout):
+    tracked = (
+        is_git_tracked(checkout, "CLAUDE.md")
+        or is_git_tracked(checkout, os.path.join(STATE_DIR, "settings.json").replace(os.sep, "/"))
+        or has_tracked_under(checkout, os.path.join(STATE_DIR, "agents").replace(os.sep, "/"))
+    )
+    return "team-tracked" if tracked else "personal"
+
+
+def target_path(checkout, rel):
+    return os.path.join(checkout, *rel.split("/"))
+
+
+def project_rel(rel, overlay):
+    if rel in ROOT_FILES:
+        if overlay == "team-tracked":
+            return f"{STATE_DIR}/personal/{rel}"
+        return rel
+    return f"{STATE_DIR}/{rel}"
+
+
+def collect_desired(entry_dir, branch, config):
+    """base 上叠加分支覆盖层，返回 {相对路径: bytes}。"""
+    desired = {}
+    base = os.path.join(entry_dir, "base")
+    for rel, full in walk_files(base):
+        with open(full, "rb") as f:
+            desired[rel] = f.read()
+    delta = os.path.join(entry_dir, "branches", branch) if branch else ""
+    if delta and os.path.isdir(delta):
+        for rel, full in walk_files(delta):
+            with open(full, "rb") as f:
+                desired[rel] = f.read()
+    if config.get("agents_md") and "AGENTS.md" not in desired and "CLAUDE.md" in desired:
+        desired["AGENTS.md"] = desired["CLAUDE.md"]
+    return desired
+
+
+def project_desired(desired, overlay):
+    return {project_rel(rel, overlay): data for rel, data in desired.items()}
+
+
+def load_state(checkout):
+    try:
+        with open(os.path.join(checkout, STATE_DIR, STATE_FILE), encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("files", {}), data
+    except (OSError, ValueError):
+        return {}, {}
+
+
+def save_json(path, data):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2, sort_keys=True)
+            f.write("\n")
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def write_file(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".kb-tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+
+
+def backup(checkout, rel):
+    stamp = time.strftime("%Y%m%dT%H%M%S")
+    dst = os.path.join(checkout, STATE_DIR, BACKUP_DIR, stamp, rel)
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copy2(target_path(checkout, rel), dst)
+    return os.path.join(STATE_DIR, BACKUP_DIR, stamp, rel)
+
+
+def ensure_exclude(checkout):
+    """投影文件对本仓库而言是本地配置，写 .git/info/exclude（不动 tracked 的 .gitignore）。"""
+    gd = os.path.realpath(_git_dir(checkout) or "")
+    exclude = os.path.join(gd, "info", "exclude") if gd else ""
+    if not exclude or not os.path.isfile(exclude):
+        return
+    try:
+        with open(exclude, encoding="utf-8") as f:
+            have = set(f.read().split())
+        need = [p for p in ("/.claude", "/.claude/personal", "/CLAUDE.md", "/AGENTS.md") if p not in have]
+        if not need:
+            return
+        with open(exclude, "a", encoding="utf-8") as f:
+            f.write("\n# experience kb 投影；唯一可写处是 ~/.local/share/dev-memory/facts\n")
+            f.write("\n".join(need) + "\n")
+    except OSError:
+        pass
+
+
+def _cache_update(name, key, value):
+    path = os.path.join(CACHE_DIR, name)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    values = set(data.get(key, []))
+    if value and value not in values:
+        values.add(value)
+        data[key] = sorted(values)
+        save_json(path, data)
+
+
+def remember_checkout(key, checkout):
+    _cache_update("checkouts.json", key, checkout)
+
+
+def remember_branch(key, branch):
+    _cache_update("branches.json", key, branch)
+
+
+def known_branches(key, entry):
+    """KB 里出现过的分支名。分支名本身可能带 /，不能靠目录层级反推，所以以 sync 记录为准。"""
+    try:
+        with open(os.path.join(CACHE_DIR, "branches.json"), encoding="utf-8") as f:
+            cached = json.load(f).get(key, [])
+    except (OSError, ValueError):
+        cached = []
+    found = []
+    for branch in cached:
+        if os.path.isdir(os.path.join(entry, "branches", branch)):
+            found.append(branch)
+    return sorted(set(found))
+
+
+def sync(checkout, quiet=False):
+    """返回 (exit_code, lines)。exit 3 = 未登记，交给回退脚本。"""
+    key, entry = lookup(checkout)
+    if not key:
+        return 3, []
+    if not entry or not os.path.isdir(entry):
+        return 3, []
+    branch = current_branch(checkout)
+    overlay_mode = detect_overlay(checkout)
+    config = update_overlay(entry, overlay_mode)
+    desired = project_desired(collect_desired(entry, branch, config), overlay_mode)
+    old_files, _ = load_state(checkout)
+    new_files, actions, warnings, skipped = {}, [], [], []
+
+    ensure_exclude(checkout)
+    for rel in sorted(desired):
+        if is_git_tracked(checkout, rel):
+            skipped.append(rel)
+            continue
+        data = desired[rel]
+        dsha = sha_bytes(data)
+        dst = target_path(checkout, rel)
+        if os.path.isfile(dst):
+            cur = sha_file(dst)
+            if cur == dsha:
+                new_files[rel] = dsha
+                continue
+            if old_files.get(rel) != cur:
+                where = backup(checkout, rel)
+                warnings.append(f"手工修改被覆盖（备份于 {where}）: {rel}")
+            actions.append(("~", rel))
+        else:
+            actions.append(("+", rel))
+        write_file(dst, data)
+        new_files[rel] = dsha
+
+    for rel, old_sha in sorted(old_files.items()):
+        if rel in desired or is_git_tracked(checkout, rel):
+            continue
+        dst = target_path(checkout, rel)
+        if not os.path.isfile(dst):
+            continue
+        if sha_file(dst) == old_sha:
+            os.remove(dst)
+            actions.append(("-", rel))
+        else:
+            where = backup(checkout, rel)
+            warnings.append(f"已失效且被改过，备份后移除（备份于 {where}）: {rel}")
+            os.remove(dst)
+            actions.append(("-", rel))
+
+    save_json(os.path.join(checkout, STATE_DIR, STATE_FILE),
+              {"schema": 1, "repo": key, "branch": branch,
+               "source": ("base+" + branch) if os.path.isdir(os.path.join(entry, "branches", branch)) else "base",
+               "overlay": overlay_mode,
+               "files": new_files})
+    remember_checkout(key, checkout)
+    if branch:
+        remember_branch(key, branch)
+
+    lines = []
+    if actions or warnings or skipped:
+        overlay = "base+" + branch if os.path.isdir(os.path.join(entry, "branches", branch)) else "base"
+        lines.append(f"kb: {key}@{branch or '(detached)'} [{overlay_mode}] ← {overlay}")
+        for mark, rel in actions:
+            lines.append(f"  {mark} {rel}")
+        for rel in skipped:
+            lines.append(f"  = 跳过 git 已跟踪文件: {rel}")
+        for w in warnings:
+            lines.append(f"  ! {w}")
+    return 0, lines
+
+
+def cmd_sync(argv):
+    quiet = "--quiet" in argv
+    args = [a for a in argv if not a.startswith("--")]
+    checkout = os.path.realpath(args[0] if args else os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+    code, lines = sync(checkout, quiet)
+    if code == 0 and not quiet:
+        for line in lines:
+            print(line)
+    return code
+
+
+def cmd_hook(argv):
+    try:
+        code, lines = sync(os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()), quiet=True)
+        for line in lines:
+            print(line)
+        if code == 3:
+            fallback = os.environ.get("KB_FALLBACK_SYNC", DEFAULT_FALLBACK)
+            if os.path.isfile(fallback):
+                subprocess.run([sys.executable, fallback], check=False)
+                return 0
+        return 0
+    except Exception as e:  # noqa: BLE001  每次会话都跑，不能糊 traceback
+        print(f"⚠ kb 投影失败（不影响使用）：{type(e).__name__}: {e}")
+        return 0
+
+
+# ------------------------------------------------------------------ 命令
+
+def cmd_status(argv):
+    args = [a for a in argv if not a.startswith("--")]
+    checkout = os.path.realpath(args[0] if args else os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+    key, entry = lookup(checkout)
+    print(f"检出: {checkout}")
+    print(f"身份: {key or '(非 git 检出，或没有 origin remote)'}")
+    if not entry:
+        print("状态: 未登记到 KB（kb import <目录> 可接入）")
+        return 1
+    branch = current_branch(checkout)
+    overlay_mode = detect_overlay(checkout)
+    overlay_dir = os.path.join(entry, "branches", branch) if branch else ""
+    overlay = "无"
+    if overlay_dir and os.path.isdir(overlay_dir):
+        overlay = ", ".join(rel for rel, _ in walk_files(overlay_dir)) or "空"
+    print(f"分支: {branch or '(detached)'}   覆盖层: {overlay}   模式: {overlay_mode}")
+    desired = project_desired(
+        collect_desired(entry, branch, parse_kb_yml(os.path.join(entry, "kb.yml"))),
+        overlay_mode,
+    )
+    state, _ = load_state(checkout)
+    same, pending, missing, skipped = 0, [], [], []
+    for rel, data in desired.items():
+        if is_git_tracked(checkout, rel):
+            skipped.append(rel)
+            continue
+        dst = target_path(checkout, rel)
+        if not os.path.isfile(dst):
+            missing.append(rel)
+        elif sha_file(dst) == sha_bytes(data):
+            same += 1
+        else:
+            pending.append(rel)
+    print(f"投影: {len(desired)} 个文件，一致 {same}，跳过 {len(skipped)}")
+    for rel in missing:
+        print(f"  缺失: {rel}")
+    for rel in pending:
+        edited = state.get(rel) != sha_file(target_path(checkout, rel))
+        print(f"  {'手工改动' if edited else '待更新'}: {rel}")
+    for rel in skipped:
+        print(f"  git跟踪，跳过: {rel}")
+    return 0
+
+
+def cmd_import(argv):
+    args = [a for a in argv if not a.startswith("--")]
+    force = "--force" in argv
+    if not args:
+        print("用法: kb import <检出目录> [--force]")
+        return 2
+    checkout = os.path.realpath(args[0])
+    key = repo_identity(checkout)
+    if not key:
+        print(f"{checkout}: 没有 origin remote，无法确定仓库身份")
+        return 2
+    overlay_mode = detect_overlay(checkout)
+    entry = entry_path(key)
+    base = os.path.join(entry, "base")
+    if os.path.isdir(base) and any(_ for _, _ in walk_files(base)) and not force:
+        print(f"条目已存在且非空: {entry}\n确认要覆盖请加 --force")
+        return 2
+    shutil.rmtree(base, ignore_errors=True)
+    os.makedirs(base, exist_ok=True)
+
+    copied = []
+    for name in ROOT_FILES:
+        candidates = []
+        if overlay_mode == "team-tracked":
+            candidates.append(os.path.join(checkout, STATE_DIR, "personal", name))
+        candidates.append(os.path.join(checkout, name))
+        for src in candidates:
+            if not os.path.isfile(src):
+                continue
+            rel = git_rel(src, checkout)
+            if is_git_tracked(checkout, rel):
+                continue
+            shutil.copy2(src, os.path.join(base, name))
+            copied.append(name)
+            break
+    # 项目级 settings.json 是纯项目配置（hooks / 插件开关），应随知识一起走；
+    # 但一旦出现本机路径或凭证就留在本地——副本进了 KB 会被跨机器带到不该去的地方。
+    settings = os.path.join(checkout, STATE_DIR, "settings.json")
+    if os.path.isfile(settings) and not is_git_tracked(checkout, f"{STATE_DIR}/settings.json"):
+        try:
+            with open(settings, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            text = ""
+        if text and not re.search(r"/Users/|/home/|sk-[A-Za-z0-9]{8,}|PRIVATE KEY", text):
+            shutil.copy2(settings, os.path.join(base, "settings.json"))
+            copied.append("settings.json")
+    for tree in ("agents", "rules", "skills", "tools"):
+        src = os.path.join(checkout, STATE_DIR, tree)
+        if not os.path.isdir(src):
+            continue
+        for rel, full in walk_files(src):
+            if is_git_tracked(checkout, f"{STATE_DIR}/{tree}/{rel}"):
+                continue
+            dst = os.path.join(base, tree, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(full, dst)
+            copied.append(f"{tree}/{rel}")
+
+    cfg = os.path.join(entry, "kb.yml")
+    if not os.path.isfile(cfg):
+        save_kb_yml(cfg, {
+            "schema": 1,
+            "name": os.path.basename(checkout),
+            "overlay": overlay_mode,
+            "agents_md": False,
+            "max_commits_behind": DEFAULT_MAX_BEHIND,
+            "branch_stale_days": DEFAULT_BRANCH_STALE_DAYS,
+        })
+    else:
+        update_overlay(entry, overlay_mode)
+    rebuild_index()
+    print(f"已导入 {len(copied)} 个文件 → {os.path.relpath(base, KB_ROOT)}")
+    for rel in copied:
+        print(f"  + {rel}")
+    print(f"\n下一步: 在各检出跑 `python3 {os.path.realpath(__file__)} sync <目录>`")
+    return 0
+
+
+def cmd_promote(argv):
+    args = [a for a in argv if not a.startswith("--")]
+    yes = "--yes" in argv
+    checkout = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+    _key, entry = lookup(checkout)
+    if not entry:
+        print(f"{checkout}: 未登记到 KB")
+        return 2
+    cohort = arg_value(argv, "--from") or current_branch(checkout)
+    if not args or not cohort:
+        print("用法: kb promote <相对路径> --from <分支> [--yes]")
+        return 2
+    rel = args[0].lstrip("./")
+    src = os.path.join(entry, "branches", cohort, rel)
+    dst = os.path.join(entry, "base", rel)
+    if not os.path.isfile(src):
+        print(f"覆盖层里没有这个文件: {src}")
+        return 2
+    old = b""
+    if os.path.isfile(dst):
+        with open(dst, "rb") as f:
+            old = f.read()
+    with open(src, "rb") as f:
+        new = f.read()
+    diff = list(difflib.unified_diff(
+        old.decode("utf-8", "replace").splitlines(),
+        new.decode("utf-8", "replace").splitlines(),
+        fromfile=f"base/{rel}", tofile=f"branches/{cohort}/{rel}", lineterm=""))
+    print("\n".join(diff) or "(内容相同)")
+    if not yes:
+        if not sys.stdin.isatty():
+            print("\n非交互环境，确认请加 --yes")
+            return 2
+        if input("\n提升到 base？[y/N] ").strip().lower() != "y":
+            return 1
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copy2(src, dst)
+    os.remove(src)
+    prune_empty(os.path.join(entry, "branches", cohort))
+    print(f"已提升: branches/{cohort}/{rel} → base/{rel}")
+    print("下一步: 各检出跑 sync 生效")
+    return 0
+
+
+def arg_value(argv, name):
+    if name in argv:
+        i = argv.index(name)
+        if i + 1 < len(argv):
+            return argv[i + 1]
+    return ""
+
+
+def prune_empty(root):
+    for dirpath, _dirs, _files in sorted(os.walk(root), key=lambda x: -len(x[0])):
+        try:
+            os.rmdir(dirpath)
+        except OSError:
+            pass
+
+
+def frontmatter(path):
+    out = {}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            if f.readline().strip() != "---":
+                return out
+            for line in f:
+                if line.strip() == "---":
+                    break
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    out[k.strip()] = v.strip()
+    except OSError:
+        pass
+    return out
+
+
+TRUNK_BRANCHES = ("develop", "dev", "main", "master")
+
+
+def known_checkouts(key):
+    try:
+        with open(os.path.join(CACHE_DIR, "checkouts.json"), encoding="utf-8") as f:
+            return [p for p in json.load(f).get(key, []) if os.path.isdir(p)]
+    except (OSError, ValueError):
+        return []
+
+
+def trunk_checkout(key):
+    """base/ 描述的是主干现实，新鲜度必须对主干量，不能对某个 feature 分支量。"""
+    paths = known_checkouts(key)
+    for path in paths:
+        if current_branch(path) in TRUNK_BRANCHES:
+            return path
+    return paths[0] if paths else ""
+
+
+def commits_behind(checkout, sha):
+    try:
+        r = subprocess.run(["git", "-C", checkout, "rev-list", "--count", f"{sha}..HEAD"],
+                           capture_output=True, text=True, timeout=5)
+        return int(r.stdout.strip() or 0) if r.returncode == 0 else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def cmd_check(argv):
+    as_json = "--json" in argv
+    entries = load_index()
+    seen = set()
+    issues, notes = [], []
+
+    for key, rel in sorted(entries.items()):
+        if rel in seen:
+            continue
+        seen.add(rel)
+        entry = os.path.join(KB_ROOT, rel)
+        cfg = parse_kb_yml(os.path.join(entry, "kb.yml"))
+        max_behind = cfg.get("max_commits_behind", DEFAULT_MAX_BEHIND)
+        stale_days = cfg.get("branch_stale_days", DEFAULT_BRANCH_STALE_DAYS)
+        checkout = trunk_checkout(key)
+
+        for rel_file, full in walk_files(os.path.join(entry, "base")):
+            if not rel_file.endswith(".md"):
+                continue
+            meta = frontmatter(full)
+            sha = meta.get("verified_at", "")
+            if not sha:
+                notes.append({"kind": "unverified", "repo": key, "file": rel_file,
+                              "detail": "没有 verified_at，无法判断新鲜度"})
+                continue
+            if not checkout or not os.path.isdir(checkout):
+                continue
+            behind = commits_behind(checkout, sha)
+            if behind is None:
+                issues.append({"kind": "verified-not-on-trunk", "repo": key, "file": rel_file,
+                               "detail": f"verified_at={sha} 不在主干历史里（按分支提交标注？合入后重新 kb verify）"})
+            elif behind > max_behind:
+                issues.append({"kind": "stale", "repo": key, "file": rel_file,
+                               "detail": f"落后 {behind} 个提交（阈值 {max_behind}）"})
+
+        branches_dir = os.path.join(entry, "branches")
+        for branch in known_branches(key, entry):
+            bdir = os.path.join(branches_dir, branch)
+            newest = max((os.path.getmtime(os.path.join(dp, f))
+                          for dp, _ds, fs in os.walk(bdir) for f in fs), default=0)
+            age = int((time.time() - newest) / 86400) if newest else 0
+            if age > stale_days:
+                issues.append({"kind": "stale-overlay", "repo": key, "file": branch,
+                               "detail": f"分支覆盖层已存活 {age} 天（阈值 {stale_days}）"})
+            for rel_file, full in walk_files(bdir):
+                base_file = os.path.join(entry, "base", rel_file)
+                if os.path.isfile(base_file):
+                    with open(full, "rb") as f1, open(base_file, "rb") as f2:
+                        if f1.read() == f2.read():
+                            issues.append({"kind": "redundant-overlay", "repo": key,
+                                           "file": f"{branch}/{rel_file}",
+                                           "detail": "与 base 完全相同，可直接删除"})
+
+    if "--brief" in argv:
+        note_txt = f"（另有 {len(notes)} 项待补标注）" if notes else ""
+        if not issues:
+            print("无例外" + note_txt)
+            return 0
+        kinds = {}
+        for it in issues:
+            kinds[it["kind"]] = kinds.get(it["kind"], 0) + 1
+        detail = "、".join(f"{k} {v}" for k, v in sorted(kinds.items()))
+        print(f"{len(issues)} 项待处理（{detail}）{note_txt}")
+        return 1
+
+    if as_json:
+        print(json.dumps({"schema": 1, "issues": issues, "notes": notes},
+                         ensure_ascii=False, indent=2))
+    else:
+        if issues:
+            print(f"kb 例外队列（{len(issues)} 项）：")
+            for it in issues:
+                print(f"  [{it['kind']}] {it['repo']} :: {it['file']} — {it['detail']}")
+        else:
+            print("kb: 无例外（知识新鲜、覆盖层无滞留）")
+        if notes:
+            print(f"待补标注（{len(notes)} 项，未计入例外）：")
+            for it in notes:
+                print(f"  {it['repo']} :: {it['file']}")
+    return 0 if not issues else 1
+
+
+def cmd_verify(argv):
+    """把某个知识文件标注为「已对照当前 HEAD 复核」。"""
+    args = [a for a in argv if not a.startswith("--")]
+    checkout = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+    if not args:
+        print("用法: kb verify <相对路径>（在已登记的检出目录里执行）")
+        return 2
+    rel = args[0].lstrip("./")
+    key, entry = lookup(checkout)
+    if not entry:
+        print(f"{checkout}: 未登记到 KB")
+        return 2
+    path = os.path.join(entry, "base", rel)
+    if not os.path.isfile(path):
+        print(f"KB 里没有这个文件: {path}")
+        return 2
+    # base 描述的是主干现实，所以标注主干提交，不是当前分支的
+    target = trunk_checkout(key) or checkout
+    try:
+        sha = subprocess.run(["git", "-C", target, "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        sha = ""
+    if not sha:
+        print("拿不到当前 HEAD")
+        return 1
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines(keepends=True)
+    stamp = f"verified_at: {sha}\n"
+    if lines and lines[0].strip() == "---":
+        end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+        if end is not None:
+            body = lines[1:end]
+            for i, line in enumerate(body):
+                if line.split(":", 1)[0].strip() == "verified_at":
+                    body[i] = stamp
+                    break
+            else:
+                body.append(stamp)
+            lines = [lines[0]] + body + lines[end:]
+        else:
+            lines = ["---\n", stamp, "---\n"] + lines
+    else:
+        lines = ["---\n", stamp, "---\n", "\n"] + lines
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("".join(lines))
+    print(f"已标注 verified_at={sha}: {rel}")
+    print("下一步: kb sync <检出> 让投影更新")
+    return 0
+
+
+USAGE = """experience kb —— 按仓库身份寻址的本机 facts 引擎
+
+  kb hook                       SessionStart hook 入口（未登记仓库回退旧同步脚本）
+  kb sync [目录]                把 KB 投影到检出
+  kb status [目录]              报告身份 / 分支 / 覆盖层 / overlay 模式 / 投影一致性
+  kb import <目录> [--force]    把现有 .claude 导入 KB 的 base/
+  kb promote <相对路径> --from <分支> [--yes]   覆盖层提升到 base
+  kb check [--json|--brief]     全库巡检：知识过期、覆盖层滞留/冗余、未标注新鲜度
+  kb verify <相对路径>          标注「已对照当前 HEAD 复核」（写 verified_at）
+
+数据根默认 ~/.local/share/dev-memory，可用 DEV_MEMORY_ROOT 覆盖。
+"""
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(USAGE)
+        return 0
+    cmd, rest = argv[0], argv[1:]
+    table = {"hook": cmd_hook, "sync": cmd_sync, "status": cmd_status,
+             "import": cmd_import, "promote": cmd_promote, "check": cmd_check,
+             "verify": cmd_verify}
+    fn = table.get(cmd)
+    if not fn:
+        print(USAGE)
+        return 2
+    return fn(rest)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

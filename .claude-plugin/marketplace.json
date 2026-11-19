@@ -11,6 +11,12 @@
       "category": "media"
     },
     {
+      "name": "experience",
+      "source": "./plugins/experience",
+      "description": "经验复利运行时：Fact / Technique / 沉淀 skill（本机数据，包内无业务）",
+      "category": "productivity"
+    },
+    {
       "name": "conventions",
       "source": "./plugins/conventions",
       "description": "通用工作约定：决策方式、改动纪律、提交规范、自动化优先、协作方式。通过 SessionStart hook 在每次会话开始时自动注入",
