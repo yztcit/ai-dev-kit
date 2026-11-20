@@ -905,6 +905,8 @@ USAGE = """experience kb —— 个人经验复利 CLI
   kb doctor [--json]            个人版健康检查（hooks / skills / 日志）
   kb note --slug S --body-file F
   kb note --slug S --body TEXT   写入 scratch 并打点 event:note
+  kb todo add|done|list          个人待办 todos/items.jsonl
+  kb habit upsert|list           跨仓习惯 habits/<id>.md + index
   kb deposit-apply [--file PATH]  读取 JSON 整单校验并写入 facts / methods-personal
   kb event <type> [--k v...]    写一条反馈事件到 logs/events.jsonl
   kb report [--days N] [--json] 汇总命中 / 记一下 / 沉淀等事件
@@ -951,6 +953,18 @@ def cmd_deposit_apply(argv):
     return _deposit_apply(argv)
 
 
+def cmd_todo(argv):
+    from todo_ops import cmd_todo as _todo
+
+    return _todo(argv)
+
+
+def cmd_habit(argv):
+    from habit_ops import cmd_habit as _habit
+
+    return _habit(argv)
+
+
 def main(argv):
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(USAGE)
@@ -966,6 +980,8 @@ def main(argv):
         "verify": cmd_verify,
         "doctor": cmd_doctor,
         "note": cmd_note,
+        "todo": cmd_todo,
+        "habit": cmd_habit,
         "deposit-apply": cmd_deposit_apply,
         "event": cmd_event,
         "report": cmd_report,

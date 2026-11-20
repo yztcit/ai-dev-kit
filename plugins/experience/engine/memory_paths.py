@@ -38,6 +38,10 @@ def habits_root():
     return os.path.join(memory_root(), "habits")
 
 
+def habits_index_path():
+    return os.path.join(habits_root(), "index.json")
+
+
 def state_path():
     return os.path.join(memory_root(), "state.json")
 
