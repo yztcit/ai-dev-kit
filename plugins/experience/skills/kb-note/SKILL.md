@@ -1,8 +1,8 @@
 ---
 name: kb-note
-description: 当用户说“记一下”“先记下来”“先存一下”“做个草稿”或使用 /kb-note 时，把当前会话里还没沉淀的原始内容写入 scratch，并通过 kb note 落盘与打点。
+description: 插件内剧本（个人版斜杠入口是 /kb-note command，勿再装到 ~/.claude/skills）。当用户说“记一下”“先记下来”“先存一下”“做个草稿”时，把未沉淀内容写入 scratch，经 kb note 落盘与打点。
 metadata:
-  skill_version: 0.1.1
+  skill_version: 0.1.2
   owner: experience
   tags:
     - experience

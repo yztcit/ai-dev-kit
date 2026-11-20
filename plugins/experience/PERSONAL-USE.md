@@ -15,11 +15,23 @@ bash ~/workspace/AI-dev-kit/plugins/experience/scripts/install_personal.sh
 python3 ~/workspace/AI-dev-kit/plugins/experience/engine/kb doctor
 ```
 
-install 会：建 `~/.local/share/dev-memory`、拷种子技巧、软链 skills 为 **`kb-note` / `kb-deposit` / `kb-habit`**（避免再出现无前缀的 `/note`）、注册 Claude hooks、把带 YAML 注释的 `commands/kb-*.md` 投影到 `~/.claude/commands/` 与 `~/.cursor/commands/`。
+install 会：建 `~/.local/share/dev-memory`、拷种子技巧、**卸掉**用户目录里会冒出 `/note` 的 capture skills、注册 Claude hooks、把带 YAML 注释的 `commands/kb-*.md` 投影到 `~/.claude/commands/` 与 `~/.cursor/commands/`。
 
-**Claude 若敲 `/kb` 仍无自动完成：** 先重跑 install，再**重启 Claude Code 会话/窗口**（命令列表多在启动时加载）。菜单里应只见 `/kb-*`，不应再有单独的 `/note`、`/deposit`。
+**Claude / Cursor 若敲 `/kb` 仍无自动完成：** 先重跑 install，再**重启会话/窗口**（命令列表多在启动时加载）。斜杠菜单里应只见 `/kb-*`，不应再有单独的 `note` / `deposit` User skill。
 
 换机器或挪了 `AI-dev-kit` 目录后重跑 install。`doctor` 全绿即可（`kb off` 时为 **DISABLED**，仍算通过）。
+
+---
+
+## Skills 与 Commands 的关系（保留哪一个）
+
+| | **Commands（保留为斜杠入口）** | **Skills（插件内剧本，不装到用户 skills）** |
+|---|---|---|
+| 路径 | `commands/kb-*.md` → `~/.claude|cursor/commands/` | `skills/kb-*/SKILL.md`（仅仓库内） |
+| 作用 | 输入 `/kb-note` 等；YAML `description` 进补全菜单 | 详细步骤/边界；给读源码、marketplace、agent 按需打开 |
+| 个人版 | **唯一斜杠表面** | install **不**链到 `~/.claude/skills`，避免与 command 双开 |
+
+日常只用 **`/kb-*` commands**。说「记一下 / 沉淀」时，助手按对应 command 同款流程调 `kb` CLI（不必再点 skill）。
 
 ---
 
@@ -45,7 +57,7 @@ install 会：建 `~/.local/share/dev-memory`、拷种子技巧、软链 skills 
 | `/kb-help` | 查子主题，如 `/kb-help deposit` |
 | `/kb-off` / `/kb-on` | 一键关/开 hooks 注入（**不删**本机数据） |
 
-自然语言别名：`记一下` → note skill；`沉淀` → deposit skill（内部改调 `kb`）。
+自然语言别名：`记一下` → 同 `/kb-note`；`沉淀` → 同 `/kb-deposit`（都调 `kb` CLI，不另开一套）。
 
 等价 CLI（脚本/自动化）：
 

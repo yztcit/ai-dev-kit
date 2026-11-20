@@ -55,14 +55,12 @@ def _hook_commands(settings: dict) -> list[str]:
     return cmds
 
 
-def _skill_ok(name: str) -> tuple[bool, str]:
+def _capture_skill_absent(name: str) -> tuple[bool, str]:
+    """Personal slash surface is commands-only; leftover user skills cause /note duplicates."""
     link = Path.home() / ".claude" / "skills" / name / "SKILL.md"
-    if not link.exists():
-        return False, f"missing ~/.claude/skills/{name}/SKILL.md"
-    target = link.resolve() if link.is_symlink() or link.exists() else None
-    if target and target.is_file():
-        return True, str(target)
-    return False, f"broken skill link: {link}"
+    if link.exists() or link.is_symlink():
+        return False, f"leftover ~/.claude/skills/{name} — re-run install_personal.py (slash=commands only)"
+    return True, "absent (ok)"
 
 
 def run_doctor(plugin_dir: Path | None = None) -> dict:
@@ -114,20 +112,27 @@ def run_doctor(plugin_dir: Path | None = None) -> dict:
         add(has_session, "claude_session_hook", "SessionStart → experience session_start.sh")
         add(has_prompt, "claude_prompt_hook", "UserPromptSubmit → experience prompt_hit.sh")
 
-    note_ok, note_detail = _skill_ok("kb-note")
-    deposit_ok, deposit_detail = _skill_ok("kb-deposit")
-    add(note_ok, "skill_kb_note", note_detail)
-    add(deposit_ok, "skill_kb_deposit", deposit_detail)
-    # Prefer Claude user commands with frontmatter (autocomplete)
+    for legacy in ("note", "deposit", "habit", "kb-note", "kb-deposit", "kb-habit"):
+        ok, detail = _capture_skill_absent(legacy)
+        add(ok, f"no_user_skill_{legacy.replace('-', '_')}", detail)
+
+    # Slash surface = commands with YAML description (autocomplete)
     claude_note = Path.home() / ".claude" / "commands" / "kb-note.md"
     if claude_note.is_file() or claude_note.is_symlink():
         add(True, "claude_slash_commands", str(claude_note.resolve()))
     else:
         add(
-            True,
+            False,
             "claude_slash_commands",
-            "WARN: missing ~/.claude/commands/kb-note.md — run install_personal.py; restart Claude",
+            "missing ~/.claude/commands/kb-note.md — run install_personal.py; restart Claude",
         )
+
+    plugin_skill = plugin / "skills" / "kb-note" / "SKILL.md"
+    add(
+        plugin_skill.is_file(),
+        "plugin_skill_playbook",
+        str(plugin_skill) if plugin_skill.is_file() else "missing skills/kb-note (playbook)",
+    )
 
     marker = _load_json(Path(install_marker_path()))
     if marker:

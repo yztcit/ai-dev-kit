@@ -1,8 +1,8 @@
 ---
 name: kb-habit
-description: 当用户说「记住我习惯」「个人习惯」「我的偏好是」或使用 /kb-habit 时，调用 kb habit upsert 写入习惯库。
+description: 插件内剧本（斜杠入口是 /kb-habit command）。当用户说「记住我习惯」「个人习惯」「我的偏好是」时，调用 kb habit upsert 写入习惯库。
 metadata:
-  skill_version: 0.1.0
+  skill_version: 0.1.1
   owner: experience
   tags:
     - experience

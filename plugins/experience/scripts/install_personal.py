@@ -57,38 +57,33 @@ def _ensure_command_links() -> int:
     return updated
 
 
-def _ensure_skill_links():
-    """Link skills as kb-* so Claude slash names match product prefix (not /note)."""
+def _remove_capture_skill_links() -> int:
+    """Slash 入口只保留 commands；卸掉用户 skills 里的 capture 项，避免 /note 与 /kb-note 双开。
+
+    插件内 skills/kb-* 仍作详细剧本（marketplace / 读源码），个人版不链到 ~/.claude/skills。
+    shared-config 等其它 skill 不动。
+    """
     skills_root = Path.home() / ".claude" / "skills"
-    skills_root.mkdir(parents=True, exist_ok=True)
-    # Remove legacy short names that showed up as /note /deposit beside /kb-note.
-    for legacy in ("note", "deposit"):
-        legacy_link = skills_root / legacy / "SKILL.md"
-        if legacy_link.is_symlink() or legacy_link.exists():
-            try:
-                legacy_link.unlink()
-            except OSError:
-                pass
-        legacy_dir = skills_root / legacy
-        if legacy_dir.is_dir() and not any(legacy_dir.iterdir()):
-            try:
-                legacy_dir.rmdir()
-            except OSError:
-                pass
-    # plugin skill dir name -> installed slash/skill name
-    mapping = (
-        ("note", "kb-note"),
-        ("deposit", "kb-deposit"),
-        ("habit", "kb-habit"),
-    )
-    for src_name, dest_name in mapping:
-        dest_dir = skills_root / dest_name
-        dest_dir.mkdir(parents=True, exist_ok=True)
+    if not skills_root.is_dir():
+        return 0
+    removed = 0
+    for name in ("note", "deposit", "habit", "kb-note", "kb-deposit", "kb-habit"):
+        dest_dir = skills_root / name
         link = dest_dir / "SKILL.md"
-        target = PLUGIN_ROOT / "skills" / src_name / "SKILL.md"
-        if not target.is_file():
-            continue
-        _link_or_replace(link, target)
+        if link.is_symlink() or link.exists():
+            try:
+                link.unlink()
+                removed += 1
+            except OSError:
+                pass
+        if dest_dir.is_dir():
+            try:
+                # only remove empty leftover dirs we created for capture skills
+                if not any(dest_dir.iterdir()):
+                    dest_dir.rmdir()
+            except OSError:
+                pass
+    return removed
 
 
 def _experience_hook_cmd(script_name: str) -> str:
@@ -155,7 +150,7 @@ def _write_marker():
 def main():
     ensure_layout()
     copied = ensure_seed_techniques(PLUGIN_ROOT)
-    _ensure_skill_links()
+    skills_removed = _remove_capture_skill_links()
     commands_linked = _ensure_command_links()
 
     settings_file = _settings_path()
@@ -177,6 +172,7 @@ def main():
     print(f"experience personal install · v{PRODUCT_VERSION}")
     print(f"  plugin: {PLUGIN_ROOT}")
     print(f"  seeds_copied: {copied}")
+    print(f"  capture_skills_unlinked: {skills_removed}")
     print(f"  commands_linked: {commands_linked}")
     print(f"  hooks_updated: {hooks_changed}")
     print(f"  doctor: {'OK' if result['ok'] else 'NEEDS_FIX'}")

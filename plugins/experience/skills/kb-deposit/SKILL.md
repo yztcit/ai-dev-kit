@@ -1,8 +1,8 @@
 ---
 name: kb-deposit
-description: 当用户说“沉淀”“收尾”“存成经验”或使用 /kb-deposit 时，把 scratch + 会话结论拆成 Fact / Technique / plans(kind) JSON，经 kb deposit-apply 整单写入。
+description: 插件内剧本（斜杠入口是 /kb-deposit command）。当用户说“沉淀”“收尾”“存成经验”时，把 scratch + 会话结论拆成 Fact / Technique / plans(kind) JSON，经 kb deposit-apply 整单写入。
 metadata:
-  skill_version: 0.1.1
+  skill_version: 0.1.2
   owner: experience
   tags:
     - experience

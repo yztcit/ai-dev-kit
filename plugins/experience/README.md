@@ -11,7 +11,7 @@ bash plugins/experience/scripts/install_personal.sh
 python3 plugins/experience/engine/kb doctor
 ```
 
-会：建本机 `dev-memory`（含 `todos/`、`habits/`、`state.json`）、拷种子技巧、软链 `note`/`deposit`、投影 `commands/kb-*.md` 到 `~/.claude/commands` 与 `~/.cursor/commands`、写入 Claude `SessionStart` + `UserPromptSubmit` hooks、写安装标记。
+会：建本机 `dev-memory`（含 `todos/`、`habits/`、`state.json`）、拷种子技巧、**卸掉**会冒出 `/note` 的用户 capture skills、投影 `commands/kb-*.md` 到 `~/.claude/commands` 与 `~/.cursor/commands`（斜杠唯一入口）、写入 Claude `SessionStart` + `UserPromptSubmit` hooks、写安装标记。插件内 `skills/kb-*` 仅作详细剧本，不装进用户 skills。
 
 也可在 marketplace 安装：
 

@@ -1,10 +1,10 @@
 ---
-description: 【经验库】个人版安装体检（hooks / skills / 日志 / 投影）；不修改配置，只报告。
+description: 【经验库】个人版安装体检（hooks / commands 投影 / 日志）；不修改配置，只报告。
 ---
 
 # /kb-doctor
 
-【经验库】个人版安装体检（hooks / skills / 日志 / 投影）；不修改配置，只报告。
+【经验库】个人版安装体检（hooks / commands 投影 / 日志）；不修改配置，只报告。
 
 ## 怎么做
 
