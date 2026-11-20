@@ -10,7 +10,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-from memory_paths import ensure_layout, events_path
+from memory_paths import ensure_layout, events_path, personal_techniques_index_path
 
 
 def _now_iso():
@@ -56,6 +56,33 @@ def iter_events(limit: int | None = None):
     return rows
 
 
+def _bump_candidates() -> list[dict]:
+    path = Path(personal_techniques_index_path())
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    entries = data.get("entries") if isinstance(data, dict) else []
+    out = []
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        strength = str(entry.get("strength") or "hypothesis").strip().lower()
+        hits = int(entry.get("hit_count") or 0)
+        if strength == "hypothesis" and hits >= 3:
+            out.append(
+                {
+                    "id": entry.get("id"),
+                    "path": entry.get("path"),
+                    "hit_count": hits,
+                    "strength": strength,
+                }
+            )
+    return out
+
+
 def summarize(days: int = 30, limit: int = 5000) -> dict:
     cutoff = time.time() - max(days, 1) * 86400
     counts = Counter()
@@ -76,10 +103,12 @@ def summarize(days: int = 30, limit: int = 5000) -> dict:
             for p in row.get("paths") or []:
                 hit_paths[str(p)] += 1
         recent.append(row)
+    bump = _bump_candidates()
     return {
         "days": days,
         "event_counts": dict(counts),
         "top_hits": hit_paths.most_common(10),
+        "bump_candidates": bump,
         "recent": recent[-20:],
         "events_file": events_path(),
     }
@@ -143,6 +172,11 @@ def cmd_report(argv):
         print("  top technique hits:")
         for path, n in summary["top_hits"]:
             print(f"    {n}× {path}")
+    if summary.get("bump_candidates"):
+        print("  bump candidates (hit≥3, hypothesis):")
+        for item in summary["bump_candidates"]:
+            label = item.get("id") or item.get("path") or "?"
+            print(f"    {label} · {item.get('hit_count')} hits · kb technique bump {label}")
     return 0
 
 

@@ -17,6 +17,7 @@ from memory_paths import (
     personal_techniques_index_path,
     scratch_root,
 )
+from state_ops import is_enabled
 
 
 DEFAULT_PLUGIN = Path.home() / "workspace" / "AI-dev-kit" / "plugins" / "experience"
@@ -77,6 +78,12 @@ def run_doctor(plugin_dir: Path | None = None) -> dict:
     prompt = plugin / "hooks" / "prompt_hit.sh"
     add(session.is_file(), "session_start_hook", str(session))
     add(prompt.is_file(), "prompt_hit_hook", str(prompt))
+
+    kb_on = is_enabled()
+    if kb_on:
+        add(True, "kb_enabled", "ON")
+    else:
+        add(True, "kb_enabled", "DISABLED")
     add(Path(facts_root()).is_dir(), "facts_dir", facts_root())
     add(Path(methods_personal_root()).is_dir(), "methods_personal", methods_personal_root())
     add(Path(scratch_root()).is_dir(), "scratch", scratch_root())
@@ -125,9 +132,17 @@ def run_doctor(plugin_dir: Path | None = None) -> dict:
     add(True, "events_log", f"{event_lines} line(s) in {events_file}")
 
     failed = [c for c in checks if not c["ok"]]
+    if not kb_on:
+        overall_ok = True
+        status = "DISABLED"
+    else:
+        overall_ok = len(failed) == 0
+        status = "OK" if overall_ok else "NEEDS_FIX"
     return {
         "product_version": PRODUCT_VERSION,
-        "ok": len(failed) == 0,
+        "ok": overall_ok,
+        "status": status,
+        "kb_enabled": kb_on,
         "failed": [c["name"] for c in failed],
         "checks": checks,
         "plugin_root": str(plugin),
@@ -145,12 +160,17 @@ def cmd_doctor(argv):
     if as_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
-        status = "OK" if result["ok"] else "NEEDS_FIX"
+        status = result.get("status") or ("OK" if result["ok"] else "NEEDS_FIX")
         print(f"experience doctor · personal {result['product_version']} · {status}")
+        if status == "DISABLED":
+            print("  kb 当前关闭 — hooks 不注入；`kb on` 恢复")
         for c in result["checks"]:
             mark = "✓" if c["ok"] else "✗"
-            print(f"  {mark} {c['name']}: {c['detail']}")
-        if not result["ok"]:
+            extra = ""
+            if c["name"] == "kb_enabled" and c["detail"] == "DISABLED":
+                extra = " (注入已关闭)"
+            print(f"  {mark} {c['name']}: {c['detail']}{extra}")
+        if not result["ok"] and status != "DISABLED":
             print("fix: bash plugins/experience/scripts/install_personal.sh")
             return 1
     return 0 if result["ok"] else 1

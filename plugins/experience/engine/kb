@@ -572,6 +572,21 @@ def cmd_status(argv):
         print(f"  {'手工改动' if edited else '待更新'}: {rel}")
     for rel in skipped:
         print(f"  git跟踪，跳过: {rel}")
+    try:
+        from state_ops import is_enabled
+
+        enabled = is_enabled()
+        print(f"经验注入: {'ON' if enabled else 'OFF'}")
+        from habit_ops import list_habits
+
+        habits_n = len(list_habits())
+        print(f"个人习惯: {habits_n}")
+        from todo_ops import list_todos
+
+        overdue_n = len(list_todos(overdue_only=True))
+        print(f"逾期待办: {overdue_n}")
+    except Exception:
+        pass
     return 0
 
 
@@ -912,6 +927,8 @@ USAGE = """experience kb —— 个人经验复利 CLI
   kb report [--days N] [--json] 汇总命中 / 记一下 / 沉淀等事件
   kb technique bump <id|path> [--to STRENGTH]
   kb technique hit <id|path>    手动 +1 hit_count
+  kb off | kb on                关闭 / 开启 hooks 经验注入
+  kb help [主题]                子命令短帮助（完整 CLI 用 kb -h）
 
 数据根默认 ~/.local/share/dev-memory，可用 DEV_MEMORY_ROOT 覆盖。
 """
@@ -965,10 +982,32 @@ def cmd_habit(argv):
     return _habit(argv)
 
 
+def cmd_off(argv):
+    from state_ops import cmd_off as _off
+
+    return _off(argv)
+
+
+def cmd_on(argv):
+    from state_ops import cmd_on as _on
+
+    return _on(argv)
+
+
+def cmd_help(argv):
+    from help_ops import cmd_help as _help
+
+    return _help(argv)
+
+
 def main(argv):
-    if not argv or argv[0] in ("-h", "--help", "help"):
+    if not argv or argv[0] in ("-h", "--help"):
         print(USAGE)
         return 0
+    if argv[0] == "help":
+        from help_ops import cmd_help as _help
+
+        return _help(argv[1:])
     cmd, rest = argv[0], argv[1:]
     table = {
         "hook": cmd_hook,
@@ -986,6 +1025,9 @@ def main(argv):
         "event": cmd_event,
         "report": cmd_report,
         "technique": cmd_technique,
+        "off": cmd_off,
+        "on": cmd_on,
+        "help": cmd_help,
     }
     fn = table.get(cmd)
     if not fn:
