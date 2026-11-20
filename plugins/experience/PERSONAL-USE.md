@@ -52,6 +52,8 @@ install 会：建 `~/.local/share/dev-memory`、拷种子技巧、**卸掉**用�
 | `/kb-bump` | 技巧升档或标否定 |
 | `/kb-promote` | 已验证技巧 → `inbox-promote/` 候选 |
 | `/kb-status` | ON/OFF、仓身份、分支、overlay、逾期 todo |
+| `/kb-ls` | 只读浏览 scratch/technique/habit/todo/facts（统一表；facts 默认当前仓，`--all` 全库） |
+| `/kb-show` | 按类型+id 看正文（默认截断，`--full` 全文） |
 | `/kb-report` | 近 N 天事件汇总 |
 | `/kb-doctor` | 安装与健康（同 CLI） |
 | `/kb-help` | 查子主题，如 `/kb-help deposit` |
@@ -180,3 +182,4 @@ Cursor 仅有命令投影、无 hooks 时见 [`docs/adapters/cursor.md`](../../d
 - 向量检索、跨设备 Fact 同步、对外收费  
 - 自动清空检出 `.claude` 或自动 fork 整套 claude_plugins  
 - Cursor 自动命中 **不是** 个人版完成条件（Claude Code hooks 是）
+- **不靠用户自觉的重自动化 / 护栏大改**——原则见设计 spec §12；等日常痛点重复再开下一版，不破坏「唯一 `kb` 写路径 + `/kb-*` 命令面」

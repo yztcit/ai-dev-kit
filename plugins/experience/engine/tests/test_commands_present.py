@@ -17,6 +17,8 @@ class CommandsPresentTests(unittest.TestCase):
             "kb-help.md",
             "kb-off.md",
             "kb-on.md",
+            "kb-ls.md",
+            "kb-show.md",
         ):
             self.assertTrue((COMMANDS / name).is_file(), f"missing {name}")
 

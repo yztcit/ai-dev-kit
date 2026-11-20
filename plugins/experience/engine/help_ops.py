@@ -13,6 +13,15 @@ TOPICS: dict[str, str] = {
     "status": "kb status [目录]\n  仓库投影状态 + 个人 enabled / 习惯数 / 逾期待办。",
     "report": "kb report [--days N] [--json]\n  事件汇总与 technique bump 候选。",
     "doctor": "kb doctor [--json]\n  安装与健康检查（off 时显示 DISABLED）。",
+    "ls": (
+        "kb ls <scratch|technique|habit|todo|facts> [--json] [--limit N] [--all] [--overdue]\n"
+        "  只读统一表：type id title_or_slug meta path。\n"
+        "  facts 默认当前仓；--all 全库。"
+    ),
+    "show": (
+        "kb show <scratch|technique|habit|todo|facts> <id> [--full]\n"
+        "  只读查看正文（默认约 80 行，--full 全文）。todo 输出 JSON。"
+    ),
 }
 
 

@@ -958,6 +958,8 @@ USAGE = """experience kb —— 个人经验复利 CLI
   kb note --slug S --body TEXT   写入 scratch 并打点 event:note
   kb todo add|done|list          个人待办 todos/items.jsonl
   kb habit upsert|list           跨仓习惯 habits/<id>.md + index
+  kb ls <type> [--json] [--limit N] [--all]   只读浏览（scratch|technique|habit|todo|facts）
+  kb show <type> <id> [--full]  只读查看正文/摘要（统一列格式的配对命令）
   kb deposit-apply [--file PATH]  读取 JSON 整单校验并写入 facts / methods-personal
   kb event <type> [--k v...]    写一条反馈事件到 logs/events.jsonl
   kb report [--days N] [--json] 汇总命中 / 记一下 / 沉淀等事件
@@ -1019,6 +1021,18 @@ def cmd_habit(argv):
     return _habit(argv)
 
 
+def cmd_ls(argv):
+    from browse_ops import cmd_ls as _ls
+
+    return _ls(argv)
+
+
+def cmd_show(argv):
+    from browse_ops import cmd_show as _show
+
+    return _show(argv)
+
+
 def cmd_banner(argv):
     args = [a for a in argv if not a.startswith("--")]
     checkout = args[0] if args else None
@@ -1067,6 +1081,8 @@ def main(argv):
         "note": cmd_note,
         "todo": cmd_todo,
         "habit": cmd_habit,
+        "ls": cmd_ls,
+        "show": cmd_show,
         "deposit-apply": cmd_deposit_apply,
         "event": cmd_event,
         "report": cmd_report,
