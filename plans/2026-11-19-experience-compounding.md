@@ -1,6 +1,11 @@
 # 经验复利 V1 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **状态：已完成 / 被取代（勿再执行）**  
+> V1（约 0.2）已落地。后续以  
+> [`docs/superpowers/plans/2026-11-20-experience-personal-0.3.md`](../docs/superpowers/plans/2026-11-20-experience-personal-0.3.md)  
+> 为准。新计划统一放在 `docs/superpowers/plans/`；本文件仅作历史归档。
+
+> **For agentic workers:** Do not execute this plan. Use the 0.3 plan above.
 
 **Goal:** 落地经验复利 V1：本机 Fact + 可分享 Technique 运行时，退役 personal-kb 公开业务树，在 aivoice 上跑通「记一下 → 沉淀 → 下会话命中」。
 
