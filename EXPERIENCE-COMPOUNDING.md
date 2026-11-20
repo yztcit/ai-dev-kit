@@ -4,7 +4,7 @@
 读者：独立评审者；无需事先了解某业务仓库  
 地位：补齐 `DESIGN.md` §八「经验侧」；与放置侧（plugin/skill 分层）同构  
 实施计划：`plans/2026-11-19-experience-compounding.md`
-补充说明：V1 运行时已在 `plugins/experience` 落地；本文继续保留设计、路径约定与未完成项。
+补充说明：V1 运行时已在 `plugins/experience` 落地；**个人版完整产品见 `plugins/experience/PERSONAL-USE.md`（含 doctor / events 反馈日志）**。本文保留设计与路径约定。
 
 ---
 
@@ -215,7 +215,9 @@ Playbook 继续用 `SKILL.md`；卡片挂在相关 Playbook 索引下。
 
 **做：** 合规去业务；引擎迁入 experience；只迁 aivoice Fact 到本机；沉淀 skill；Technique index + 命中；3～5 张种子卡；5 会话验证。
 
-**不做：** 全项目清理；向量库；Fact 私有 git；自动发 marketplace；经验市场产品化。
+**个人版完整产品（0.2.0，日常可用）：** `install_personal` + `kb doctor` + `logs/events.jsonl`（session/hit/note/deposit）+ `kb report` + `kb technique bump`；见 `PERSONAL-USE.md`。日常工作产日志，不再补流程。
+
+**不做：** 全项目清理；向量库；Fact 私有 git；自动发 marketplace；经验市场产品化；Cursor 自动命中对等（非个人版完成条件）。
 
 | # | 指标 |
 |---|---|
@@ -225,6 +227,7 @@ Playbook 继续用 `SKILL.md`；卡片挂在相关 Playbook 索引下。
 | 4 | 「记一下」→ 可命中 ≤ 一次沉淀确认 |
 | 5 | 陌生人只靠 plugin 安装跑通闭环 |
 | 6 | 未过审条目不得进可分享层 |
+| 7 | `kb doctor` 全绿；一周后 `kb report` 能看到 hit/note/deposit 计数 |
 
 ---
 

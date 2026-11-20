@@ -73,6 +73,7 @@ def main():
 
     memory_paths.ensure_layout()
     bootstrap.ensure_seed_techniques(plugin_dir)
+    events = load_module("experience_events", engine_dir / "events.py", extra_sys_path=engine_dir)
     code, lines = kb.sync(checkout, quiet=True)
     for line in lines:
         print(line)
@@ -84,9 +85,22 @@ def main():
         never_remind = set(index_doc.get("never_remind", [])) if isinstance(index_doc, dict) else set()
         if repo_key and repo_key not in never_remind:
             print_unregistered_hint(repo_key, checkout, engine_dir, memory_paths.index_path())
+        try:
+            events.append_event(
+                "session_start",
+                checkout=checkout,
+                repo=repo_key or "",
+                registered=False,
+            )
+        except Exception:
+            pass
         return 0
 
     if not repo_key:
+        try:
+            events.append_event("session_start", checkout=checkout, repo="", registered=False)
+        except Exception:
+            pass
         return 0
     _key, entry_dir = kb.lookup(checkout)
     if not entry_dir:
@@ -95,6 +109,17 @@ def main():
     config = kb.parse_kb_yml(os.path.join(entry_dir, "kb.yml"))
     maybe_print_personal_fact(kb, entry_dir, branch, config)
     maybe_print_techniques(hit)
+    try:
+        events.append_event(
+            "session_start",
+            checkout=checkout,
+            repo=repo_key,
+            registered=True,
+            branch=branch or "",
+            overlay=(config.get("overlay") or ""),
+        )
+    except Exception:
+        pass
     return 0
 
 

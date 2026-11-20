@@ -78,10 +78,23 @@ status: scratch
 <如果需要沉淀，下一步该交给 deposit 做什么>
 ```
 
+## 写盘后必须打点（个人版反馈）
+
+文件写成功后立刻执行（路径按本机插件位置）：
+
+```bash
+python3 "$HOME/workspace/AI-dev-kit/plugins/experience/engine/kb" event note \
+  --path "<scratch绝对路径>" \
+  --slug "<slug>"
+```
+
+不要跳过：没有这条事件，`kb report` 无法统计「记一下」使用情况。
+
 ## 检查清单
 
 - 文件确实落在 `scratch/` 下。
 - 文件名带时间戳和主题 slug。
 - 用户原句没有被过度改写。
 - 没有把内容提前分到 `facts/`、`methods-personal/` 或 `techniques/index.json`。
+- 已执行 `kb event note`。
 

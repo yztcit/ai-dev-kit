@@ -54,13 +54,14 @@
 
 - **现象**：跨项目通用的偏好被**多个项目各沉淀一份**；会话产生的经验不自动沉淀，靠 Claude
   自决会漏（实测：某轮会话的新事实一条没进 memory）。
-- **已完成（2026-11-19）**：
-  1. **V1 运行时已落地**——`plugins/experience` 承载 `kb`、`SessionStart` hook、`note` / `deposit` skills、`techniques/index.json` 命中与 `~/.local/share/dev-memory` 布局。
-  2. **公开树已退役**——`personal-kb` 的业务内容已清理并重定向，经验侧不再依赖旧公开业务目录。
-  3. **主路径已切换**——经验写入改为“写入时刻拆分”，周检只保留为辅助，不再把闭环寄托在事后全量扫描。
-- **剩余项**：`plans` 自动巡检仍 deferred；历史 scrub 只保留为退役收尾与留档说明，不阻塞 V1。
-- **触发条件**：需要补充 `plans` 自动巡检、或发现经验侧路径与插件实现再次漂移时。
-- **证据在哪**：`DESIGN.md` §八；`EXPERIENCE-COMPOUNDING.md`。
+- **已完成（2026-11-19 / 个人版 0.2.0 @ 2026-11-20）**：
+  1. **V1 运行时已落地**——`plugins/experience` 承载 `kb`、`SessionStart` / `UserPromptSubmit` hooks、`note` / `deposit` skills、技巧命中与 `~/.local/share/dev-memory` 布局。
+  2. **公开树已退役**——`personal-kb` 业务内容已清理；经验侧不再依赖旧公开业务目录。
+  3. **主路径已切换**——写入时刻拆分；周检只作辅助。
+  4. **个人版完整产品**——`install_personal`、`kb doctor`、`logs/events.jsonl`、`kb report` / `technique bump`；日常入口 `plugins/experience/PERSONAL-USE.md`。
+- **剩余项**：`plans` 自动巡检仍 deferred；Cursor 自动命中对等非个人版范围；对外分发/市场叙事不做。
+- **触发条件**：需要 `plans` 巡检、或路径与实现再次漂移时。
+- **证据在哪**：`DESIGN.md` §八；`EXPERIENCE-COMPOUNDING.md`；`plugins/experience/PERSONAL-USE.md`。
 
 ## 5. conventions 插件的 hook 路径未实机验证
 

@@ -122,6 +122,19 @@ strength: hypothesis
 - 删除卡时同步删索引条目。
 - `contradicted` 不自动灌进启动命中清单。
 
+## 写盘后必须打点（个人版反馈）
+
+用户确认并完成写入后立刻执行：
+
+```bash
+python3 "$HOME/workspace/AI-dev-kit/plugins/experience/engine/kb" event deposit \
+  --fact_count "<N>" \
+  --technique_count "<N>" \
+  --plans_count "<N>"
+```
+
+可选再附 `--json '{"paths":["..."]}'`。没有这条事件，`kb report` 无法统计沉淀。
+
 ## 交付前检查
 
 - Fact、Technique、plans 已明确分开。
@@ -129,4 +142,5 @@ strength: hypothesis
 - Technique 卡都有反例。
 - `methods-personal` 与 `methods-personal/index.json` 没有漂移。
 - team-tracked 场景没有出现“覆盖 CLAUDE.md”这种不必要的表述。
+- 已执行 `kb event deposit`。
 

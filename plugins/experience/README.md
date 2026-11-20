@@ -2,20 +2,27 @@
 
 `experience` 是 AI-dev-kit 的经验复利插件：用于承载本机 `Fact`、`Technique` 和沉淀相关能力，但插件包本身不包含业务内容。
 
-## 安装
+**个人版日常用法：** 见 [`PERSONAL-USE.md`](./PERSONAL-USE.md)（完整产品入口）。
 
-在 AI-dev-kit 的插件市场中安装：
+## 安装（个人版推荐）
+
+```bash
+bash plugins/experience/scripts/install_personal.sh
+python3 plugins/experience/engine/kb doctor
+```
+
+会：建本机 `dev-memory`、拷种子技巧、软链 `note`/`deposit`、写入 Claude `SessionStart` + `UserPromptSubmit` hooks、写安装标记。
+
+也可在 marketplace 安装：
 
 ```bash
 /plugin install experience@ai-dev-kit
 ```
 
-安装后会注册：
+安装后 hooks：
 
-- `SessionStart` → `hooks/session_start.sh`：同步本机 Fact、未接入提示、个人技巧数量等  
-- `UserPromptSubmit` → `hooks/prompt_hit.sh`：按用户话术触发词匹配 `methods-personal` / 公开技巧，并注入 `[experience-technique]` 路径（须 Read 后执行；勿只引用项目 MEMORY）
-
-本机若未走 plugin 安装、只改了 `~/.claude/settings.json`，也需同时挂上上述两条。
+- `SessionStart` → `hooks/session_start.sh`：同步 Fact、未接入提示、写 `session_start` 事件  
+- `UserPromptSubmit` → `hooks/prompt_hit.sh`：技巧命中注入 + 写 `technique_hit` 事件 / `hit_count`
 
 插件内 `techniques/` 只保留可分享公开索引；seed 在 `seed_techniques/`，首次复制到本机 `methods-personal/`。
 

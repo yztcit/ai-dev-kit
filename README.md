@@ -58,18 +58,21 @@ health -v     # 展开明细
 
 ## experience：经验复利运行时
 
-`plugins/experience` 承载本机 `Fact`、`Technique` 和沉淀流程，包内不放业务内容。安装后用：
+`plugins/experience` 承载本机 `Fact`、`Technique` 和沉淀流程，包内不放业务内容。
+
+**个人版（完整产品，日常入口）：** [`plugins/experience/PERSONAL-USE.md`](plugins/experience/PERSONAL-USE.md)
 
 ```bash
-/plugin install experience@ai-dev-kit
+bash plugins/experience/scripts/install_personal.sh
+python3 plugins/experience/engine/kb doctor
 ```
 
-这个插件会在 `SessionStart` 时跑 hook：同步当前检出、提示未接入仓、并在 `team-tracked` 场景下提示个人补充事实和高优先技巧。
+日常：Claude Code 里正常写代码；「记一下」→ scratch；「沉淀」→ Fact/Technique；反馈看 `kb report`。  
+也可 `/plugin install experience@ai-dev-kit`。
 
-- 唯一运行时根目录：`~/.local/share/dev-memory`
-- 可用 `DEV_MEMORY_ROOT` 覆盖
-- 目录布局：`facts/`、`methods-personal/`、`scratch/`、`inbox/{facts,methods}/`、`index.json`
-- 设计与细节见 [`EXPERIENCE-COMPOUNDING.md`](EXPERIENCE-COMPOUNDING.md) 与 [`plugins/experience/README.md`](plugins/experience/README.md)
+- 运行时根：`~/.local/share/dev-memory`（可用 `DEV_MEMORY_ROOT` 覆盖）
+- 布局：`facts/`、`methods-personal/`、`scratch/`、`logs/events.jsonl`、`inbox/`、`index.json`
+- 设计：[`EXPERIENCE-COMPOUNDING.md`](EXPERIENCE-COMPOUNDING.md)；插件说明：[`plugins/experience/README.md`](plugins/experience/README.md)
 
 ## video/：视频生成请求整理
 

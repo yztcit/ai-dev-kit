@@ -25,11 +25,14 @@ import subprocess
 import sys
 import time
 
-from memory_paths import ensure_layout, facts_root, index_path as memory_index_path
+from memory_paths import ensure_layout
 
 HOME = os.path.expanduser("~")
+# Pin root at import so tests can set DEV_MEMORY_ROOT before load_kb() and then clear env.
 MEMORY_ROOT = ensure_layout()
 KB_ROOT = MEMORY_ROOT
+FACTS_ROOT = os.path.join(KB_ROOT, "facts")
+INDEX_PATH = os.path.join(KB_ROOT, "index.json")
 CACHE_DIR = os.path.join(HOME, ".cache", "experience-kb")
 STATE_DIR = ".claude"
 STATE_FILE = ".kb-state.json"
@@ -113,7 +116,7 @@ def current_branch(checkout):
 # ------------------------------------------------------------------ 条目
 
 def index_path():
-    return memory_index_path()
+    return INDEX_PATH
 
 
 def load_index_doc():
@@ -136,12 +139,12 @@ def load_index():
 
 
 def entry_path(key):
-    return os.path.join(facts_root(), *key.split("/"))
+    return os.path.join(FACTS_ROOT, *key.split("/"))
 
 
 def rebuild_index():
     entries = {}
-    base = facts_root()
+    base = FACTS_ROOT
     if os.path.isdir(base):
         for dirpath, _dirs, files in os.walk(base):
             if "kb.yml" not in files:
@@ -890,7 +893,7 @@ def cmd_verify(argv):
     return 0
 
 
-USAGE = """experience kb —— 按仓库身份寻址的本机 facts 引擎
+USAGE = """experience kb —— 个人经验复利 CLI
 
   kb hook                       SessionStart hook 入口（未登记仓库回退旧同步脚本）
   kb sync [目录]                把 KB 投影到检出
@@ -899,9 +902,38 @@ USAGE = """experience kb —— 按仓库身份寻址的本机 facts 引擎
   kb promote <相对路径> --from <分支> [--yes]   覆盖层提升到 base
   kb check [--json|--brief]     全库巡检：知识过期、覆盖层滞留/冗余、未标注新鲜度
   kb verify <相对路径>          标注「已对照当前 HEAD 复核」（写 verified_at）
+  kb doctor [--json]            个人版健康检查（hooks / skills / 日志）
+  kb event <type> [--k v...]    写一条反馈事件到 logs/events.jsonl
+  kb report [--days N] [--json] 汇总命中 / 记一下 / 沉淀等事件
+  kb technique bump <id|path> [--to STRENGTH]
+  kb technique hit <id|path>    手动 +1 hit_count
 
 数据根默认 ~/.local/share/dev-memory，可用 DEV_MEMORY_ROOT 覆盖。
 """
+
+
+def cmd_doctor(argv):
+    from doctor import cmd_doctor as _doctor
+
+    return _doctor(argv)
+
+
+def cmd_event(argv):
+    from events import cmd_event as _event
+
+    return _event(argv)
+
+
+def cmd_report(argv):
+    from events import cmd_report as _report
+
+    return _report(argv)
+
+
+def cmd_technique(argv):
+    from technique_ops import cmd_technique as _technique
+
+    return _technique(argv)
 
 
 def main(argv):
@@ -909,9 +941,19 @@ def main(argv):
         print(USAGE)
         return 0
     cmd, rest = argv[0], argv[1:]
-    table = {"hook": cmd_hook, "sync": cmd_sync, "status": cmd_status,
-             "import": cmd_import, "promote": cmd_promote, "check": cmd_check,
-             "verify": cmd_verify}
+    table = {
+        "hook": cmd_hook,
+        "sync": cmd_sync,
+        "status": cmd_status,
+        "import": cmd_import,
+        "promote": cmd_promote,
+        "check": cmd_check,
+        "verify": cmd_verify,
+        "doctor": cmd_doctor,
+        "event": cmd_event,
+        "report": cmd_report,
+        "technique": cmd_technique,
+    }
     fn = table.get(cmd)
     if not fn:
         print(USAGE)

@@ -123,6 +123,8 @@ def main():
         by_path[Path(rel).name] = entry
 
     blocks = []
+    resolved_paths = []
+    strengths = []
     for rel in paths:
         entry = by_path.get(rel) or by_path.get(Path(rel).name) or {}
         strength = (entry.get("strength") or "hypothesis").strip().lower()
@@ -135,9 +137,36 @@ def main():
             "Matched experience technique (%s): %s\n\n%s"
             % (label, card, body)
         )
+        resolved_paths.append(str(card))
+        strengths.append(strength)
 
     if not blocks:
         return
+
+    # Ops log + hit_count for personal feedback (never print to hook stdout).
+    try:
+        events = load_module(
+            "experience_events",
+            engine_dir / "events.py",
+            extra_sys_path=engine_dir,
+        )
+        technique_ops = load_module(
+            "experience_technique_ops",
+            engine_dir / "technique_ops.py",
+            extra_sys_path=engine_dir,
+        )
+        fp = events.prompt_fingerprint(prompt)
+        checkout = os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+        events.append_event(
+            "technique_hit",
+            checkout=checkout,
+            paths=resolved_paths,
+            strengths=strengths,
+            **fp,
+        )
+        technique_ops.record_hits(resolved_paths)
+    except Exception:
+        pass
 
     # Factual reminder (not imperative "system command") so Claude uses it rather
     # than treating it as prompt injection. Authority is the experience card.
