@@ -22,9 +22,11 @@ docs/
 |---|---|---|
 | 三层体系不变量 | 根 `DESIGN.md` | 改体系前必读 |
 | 经验复利原理 | `docs/design/EXPERIENCE-COMPOUNDING.md` | 与 0.3 产品对齐 |
-| 个人助手 0.3 设计 | `docs/superpowers/specs/2026-11-20-…` | 已批准并落地 |
-| 个人助手 0.3 计划 | `docs/superpowers/plans/2026-11-20-…` | 已执行完，可归档 |
+| 个人助手 0.3 设计 | `docs/superpowers/specs/2026-11-20-…` | 已落地 |
+| 个人助手 0.3 计划 | `docs/superpowers/archive/plans/2026-11-20-…` | 已执行并归档 |
 | 用法 | `plugins/experience/PERSONAL-USE.md` | **用户只看这个** |
+| Cursor 适配 | `docs/adapters/cursor.md` | 无 hooks；有 `/kb-*` / ls·show |
+| Claude / CC GUI 适配 | `docs/adapters/claude.md` | hooks 主路径；GUI 开场可能不可见 |
 
 ## 配套关系（spec ↔ plan）
 

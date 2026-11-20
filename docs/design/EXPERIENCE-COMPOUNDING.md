@@ -216,7 +216,7 @@ Playbook 继续用 `SKILL.md`；卡片挂在相关 Playbook 索引下。
 
 **做：** 合规去业务；引擎迁入 experience；只迁 aivoice Fact 到本机；沉淀 skill；Technique index + 命中；3～5 张种子卡；5 会话验证。
 
-**个人版完整产品（0.3.0，已落地）：** `install_personal` + `/kb-*` 投影 + `kb doctor` + 开场条 + `off/on` + `note`/`deposit-apply`/`todo`/`habit` + 分支感知 `import` + `logs/events.jsonl` + `kb report` / `technique bump`；日常入口 [`plugins/experience/PERSONAL-USE.md`](../../plugins/experience/PERSONAL-USE.md)；产品设计 [`docs/superpowers/specs/2026-11-20-personal-assistant-extreme-design.md`](../superpowers/specs/2026-11-20-personal-assistant-extreme-design.md)。
+**个人版完整产品（0.3.0+，已落地）：** `install_personal` + `/kb-*` 投影 + `kb doctor` + 开场条 + `off/on` + `note`/`deposit-apply`/`todo`/`habit` + 分支感知 `import` + `logs/events.jsonl` + `kb report` / `technique bump` + 只读浏览 `kb ls`/`kb show`（`/kb-ls`·`/kb-show`）；斜杠唯一入口为 commands，skills 仅仓库内剧本；日常入口 [`plugins/experience/PERSONAL-USE.md`](../../plugins/experience/PERSONAL-USE.md)；产品设计 [`docs/superpowers/specs/2026-11-20-personal-assistant-extreme-design.md`](../superpowers/specs/2026-11-20-personal-assistant-extreme-design.md)；适配 [`docs/adapters/`](../adapters/)。
 
 **不做：** 全项目清理；向量库；Fact 私有 git；自动发 marketplace；经验市场产品化；Cursor 自动命中对等（非个人版完成条件）。
 

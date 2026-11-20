@@ -67,15 +67,18 @@ install 会：建 `~/.local/share/dev-memory`、拷种子技巧、**卸掉**用�
 python3 .../engine/kb note --slug t --body "…"
 python3 .../engine/kb deposit-apply --file payload.json
 python3 .../engine/kb todo add "标题" --due 2026-11-25
+python3 .../engine/kb ls habit
+python3 .../engine/kb show habit commit-wait-user
+python3 .../engine/kb ls facts --all
 python3 .../engine/kb off
-python3 .../engine/kb help import
+python3 .../engine/kb help ls
 ```
 
 ---
 
 ## 怎么知道 kb 在生效
 
-**开场条（主信号）**：SessionStart 且 `kb on` 时注入一行，例如：
+**开场条（Claude Code 终端主信号）**：SessionStart 且 `kb on` 时注入一行，例如：
 
 ```text
 [experience] kb ON · myrepo@feature-x · … · todos逾期:1
@@ -83,10 +86,28 @@ python3 .../engine/kb help import
 
 - 本仓未 import：`… 本仓未 import · 仅技巧/待办可用 · /kb-import 可接入`
 - `kb off`：`[experience] kb OFF · 输入 /kb-on 恢复`（hooks 仍在，靠开关短路）
+- **Cursor / CC GUI**：钩子可能已跑（见 `events.jsonl` 的 `session_start`），但界面常**不显示**该行 → 以主动查询为准
 
 **主动查**：`/kb-status`、`/kb-doctor`、`/kb-report`。
 
 **间接**：话术命中技巧卡；`logs/events.jsonl` 增长。
+
+---
+
+## 浏览已落盘内容（不必翻目录）
+
+统一只读命令（列：`type` · `id` · `title_or_slug` · `meta` · `path`）：
+
+| 你想看 | 列表 | 看正文 |
+|---|---|---|
+| 草稿 | `/kb-ls scratch` | `/kb-show scratch <id>` |
+| 技巧 | `/kb-ls technique` | `/kb-show technique <id>` |
+| 习惯 | `/kb-ls habit` | `/kb-show habit <id>` |
+| 待办 | `/kb-ls todo` | `/kb-show todo <id>` |
+| 当前仓 Fact | `/kb-ls facts` | `/kb-show facts base/CLAUDE.md` |
+| 全库 Fact | `/kb-ls facts --all` | 同上（id 为条目内相对路径） |
+
+等价 CLI：`kb ls …` / `kb show …`（`--json` / `--full` / `--limit N`）。
 
 ---
 
@@ -172,7 +193,7 @@ bash .../scripts/install_personal.sh
 python3 .../engine/kb help <主题>
 ```
 
-Cursor 仅有命令投影、无 hooks 时见 [`docs/adapters/cursor.md`](../../docs/adapters/cursor.md)。
+适配：Cursor 见 [`docs/adapters/cursor.md`](../../docs/adapters/cursor.md)；Claude / CC GUI 见 [`docs/adapters/claude.md`](../../docs/adapters/claude.md)。
 
 ---
 

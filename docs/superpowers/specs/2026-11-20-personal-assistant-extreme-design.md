@@ -1,7 +1,7 @@
 # 个人 AI 助手（experience 0.3）产品设计定稿
 
 日期：2026-11-20  
-状态：**已批准**（2026-11-20）→ 实现计划见 `docs/superpowers/plans/2026-11-20-experience-personal-0.3.md`  
+状态：**已落地**（2026-11-20；后续补丁含 ls/show、§12）→ 实现计划已归档 `docs/superpowers/archive/plans/2026-11-20-experience-personal-0.3.md`  
 产品名（对内）：experience 个人版 0.3  
 一句话：**本机个人 AI 助手操作系统**——知识复利 + 项目投影 + 轻量待办/规划/复盘；你出意图并日常用，系统用日志与开场展示证明生效；可一键关闭；换 AI 工具不搬家。
 
@@ -238,11 +238,14 @@ facts/<身份>/
 | `/kb-status` | on/off、仓身份、分支、overlay、最近 sync、技巧数、逾期待办 |
 | `/kb-doctor` | 安装健康 |
 | `/kb-report` | 近 N 天复利与待办数据 |
+| `/kb-ls` · `/kb-show` | 只读浏览各类型落盘（统一表；免翻目录） |
+
+**Cursor / CC GUI：** 开场行常不可见；以本节主动查询 + `events.jsonl` 为准（见 `docs/adapters/cursor.md`、`docs/adapters/claude.md`）。
 
 ### 5.3 间接证明
 
 命中时上下文出现技巧卡；`.claude` 出现 `.kb-state.json`；`events.jsonl` 增长。  
-**不以「感觉有用」为准**；以开场条 + status + report 为准。
+**不以「感觉有用」为准**；以开场条（终端可见时）+ status + report + ls/show 为准。
 
 ---
 
@@ -297,6 +300,8 @@ facts/<身份>/
 | `/kb-bump` | 技巧升档或标否定 |
 | `/kb-promote` | 个人技巧升到可分享候选目录 |
 | `/kb-status` | 看 kb 是否 ON、本仓/分支/逾期/技巧概况 |
+| `/kb-ls` | 只读列表：scratch/technique/habit/todo/facts（统一列；facts 默认当前仓，`--all` 全库） |
+| `/kb-show` | 按类型+id 看正文（默认截断，`--full` 全文） |
 | `/kb-report` | 近 7 天数据 |
 | `/kb-doctor` | 安装体检 |
 | `/kb-help` | 查某能力怎么用：`/kb-help deposit`（见 §7.1） |
@@ -305,9 +310,9 @@ facts/<身份>/
 
 ### 7.1 `/kb-help`（帮助）
 
-- 用法：`/kb-help` 总览；`/kb-help <主题>` 如 `note` `deposit` `import` `todo` `off` `promote` `claude_plugins`。  
+- 用法：`/kb-help` 总览；`/kb-help <主题>` 如 `note` `deposit` `import` `todo` `off` `ls` `show` `promote`。  
 - 行为：输出该能力的「何时用 / 不要用 / 会改什么 / 一条最短例子 / 相关命令」；内容来自 `commands/kb-*.md` 与 PERSONAL-USE 的同源片段，**禁止另写第二套说明**。  
-- 前缀仍用 `kb-`（与产品一致）；若工具允许，可把描述写成「【经验库】帮助：查 note/deposit/import…怎么用」。
+- 前缀仍用 `kb-`（与产品一致）；若工具允许，可把描述写成「【经验库】帮助：查 note/deposit/ls/show…怎么用」。
 
 ---
 
@@ -528,6 +533,7 @@ facts/<身份>/
 ### 12.3 候选护栏 backlog（未排期）
 
 - `pain-` / 商业线索：由 note 元数据或 report 筛选，不要求用户记前缀。  
+- ~~`/kb-ls` · `/kb-show` 只读浏览~~（已落地，见 §7）  
 - `/kb-ping` 或 status 增「最近一次 session_start」——仅当 status 仍不够用时。  
-- CC GUI / Cursor：开场条可见性属适配器体验，不改 kb 内核。  
+- CC GUI / Cursor：开场条可见性属适配器体验，不改 kb 内核（说明见 `docs/adapters/`）。  
 - habit 超限只注入标题；Technique 超长告警。

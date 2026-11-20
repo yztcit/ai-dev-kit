@@ -26,7 +26,11 @@ python3 plugins/experience/engine/kb doctor
 
 一键开关：`python3 engine/kb off` · `on`；或 `/kb-off` · `/kb-on`。
 
+只读浏览（统一表格式，免翻目录）：`kb ls` / `kb show`，斜杠 `/kb-ls` · `/kb-show`（`scratch`·`technique`·`habit`·`todo`·`facts`；facts 默认当前仓，`--all` 全库）。
+
 插件内 `techniques/` 只保留可分享公开索引；seed 在 `seed_techniques/`，首次复制到本机 `methods-personal/`。
+
+适配说明：[`docs/adapters/cursor.md`](../../docs/adapters/cursor.md)、[`docs/adapters/claude.md`](../../docs/adapters/claude.md)。
 
 ## MEMORY_ROOT
 

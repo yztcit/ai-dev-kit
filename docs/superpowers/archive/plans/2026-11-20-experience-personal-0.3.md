@@ -1,5 +1,7 @@
 # experience 个人版 0.3 Implementation Plan
 
+> **状态：已归档（2026-11-20）** — 任务已执行完毕。现行用法见 `plugins/experience/PERSONAL-USE.md`；设计见对应 spec（已落地）。勿再按本文开新实现会话。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 按已批准 spec 把个人 AI 助手打到 0.3：`kb` 写契约（note/deposit/todo/habit/off/on/help/status 展示）、分支感知 import、开场生效条、`/kb-*` 命令投影、文档与验收剧本。
