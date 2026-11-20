@@ -1,6 +1,6 @@
 ---
-name: note
-description: 当用户说“记一下”“先记下来”“先存一下”“做个草稿”时，把当前会话里还没沉淀的原始内容写入 scratch，并通过 kb note 落盘与打点。
+name: kb-note
+description: 当用户说“记一下”“先记下来”“先存一下”“做个草稿”或使用 /kb-note 时，把当前会话里还没沉淀的原始内容写入 scratch，并通过 kb note 落盘与打点。
 metadata:
   skill_version: 0.1.1
   owner: experience

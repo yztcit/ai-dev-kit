@@ -1,6 +1,6 @@
 ---
-name: habit
-description: 当用户说「记住我习惯」「个人习惯」「我的偏好是」等要跨项目记住的个人习惯时，调用 kb habit upsert 写入习惯库。
+name: kb-habit
+description: 当用户说「记住我习惯」「个人习惯」「我的偏好是」或使用 /kb-habit 时，调用 kb habit upsert 写入习惯库。
 metadata:
   skill_version: 0.1.0
   owner: experience
