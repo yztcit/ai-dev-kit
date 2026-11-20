@@ -7,7 +7,7 @@
 > **用法**：不要定期通读。当某项的**触发条件**出现时，来做它。
 > 触发条件写的是"什么事实出现就该动手"，不是一个日期——日期会过期，事实不会。
 >
-> 最后更新：2026-09-23
+> 最后更新：2026-11-20
 
 ## 1. Windows 无通知、无调度
 
@@ -54,12 +54,13 @@
 
 - **现象**：跨项目通用的偏好被**多个项目各沉淀一份**；会话产生的经验不自动沉淀，靠 Claude
   自决会漏（实测：某轮会话的新事实一条没进 memory）。
-- **已完成（2026-11-19 / 个人版 0.2.0 @ 2026-11-20）**：
+- **已完成（V1 @ 2026-11-19 · 个人版 0.2.0 @ 2026-11-20 · 0.3.0 @ 2026-11-20）**：
   1. **V1 运行时已落地**——`plugins/experience` 承载 `kb`、`SessionStart` / `UserPromptSubmit` hooks、`note` / `deposit` skills、技巧命中与 `~/.local/share/dev-memory` 布局。
   2. **公开树已退役**——`personal-kb` 业务内容已清理；经验侧不再依赖旧公开业务目录。
   3. **主路径已切换**——写入时刻拆分；周检只作辅助。
-  4. **个人版完整产品**——`install_personal`、`kb doctor`、`logs/events.jsonl`、`kb report` / `technique bump`；日常入口 `plugins/experience/PERSONAL-USE.md`。
-- **剩余项**：`plans` 自动巡检仍 deferred；Cursor 自动命中对等非个人版范围；对外分发/市场叙事不做。
+  4. **个人版 0.2**——`install_personal`、`kb doctor`、`logs/events.jsonl`、`kb report` / `technique bump`。
+  5. **个人版 0.3.0（完整产品）**——`PRODUCT_VERSION=0.3.0`；`note` / `deposit-apply` / `todo` / `habit` / `off`·`on` / `help`；分支感知 `import`；SessionStart 开场条；`/kb-*` 命令投影；`PERSONAL-USE.md` + `docs/adapters/*`；实现计划 `docs/superpowers/plans/2026-11-20-experience-personal-0.3.md` 已执行完毕。
+- **剩余项（deferred）**：`plans` 自动巡检；`kb gc-local` 自动删除（仅文档）；Cursor hooks 对等；对外分发/市场叙事；向量检索与跨设备同步。
 - **触发条件**：需要 `plans` 巡检、或路径与实现再次漂移时。
 - **证据在哪**：`DESIGN.md` §八；`EXPERIENCE-COMPOUNDING.md`；`plugins/experience/PERSONAL-USE.md`。
 

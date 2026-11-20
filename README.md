@@ -67,11 +67,12 @@ bash plugins/experience/scripts/install_personal.sh
 python3 plugins/experience/engine/kb doctor
 ```
 
-日常：Claude Code 里正常写代码；「记一下」→ scratch；「沉淀」→ Fact/Technique；反馈看 `kb report`。  
-也可 `/plugin install experience@ai-dev-kit`。
+日常：Claude Code 里正常写代码；`/kb-*` 或「记一下」「沉淀」；开场可见 kb 生效条；`/kb-off` 可关注入。反馈看 `kb report`。  
+也可 `/plugin install experience@ai-dev-kit`（hooks）；个人版推荐 `install_personal`（含 Cursor 命令投影）。
 
+- 产品版本：**0.3.0**（`PERSONAL-USE.md`）
 - 运行时根：`~/.local/share/dev-memory`（可用 `DEV_MEMORY_ROOT` 覆盖）
-- 布局：`facts/`、`methods-personal/`、`scratch/`、`logs/events.jsonl`、`inbox/`、`index.json`
+- 布局：`facts/`、`methods-personal/`、`scratch/`、`todos/`、`habits/`、`state.json`、`logs/events.jsonl`、`inbox/`、`index.json`
 - 设计：[`EXPERIENCE-COMPOUNDING.md`](EXPERIENCE-COMPOUNDING.md)；插件说明：[`plugins/experience/README.md`](plugins/experience/README.md)
 
 ## video/：视频生成请求整理
