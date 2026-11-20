@@ -139,6 +139,7 @@ def cmd_technique(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print("usage: kb technique bump <id|path|filename> [--to used|repeated|contradicted|hypothesis]")
         print("       kb technique hit <id|path|filename>   # +1 hit_count")
+        print("       kb technique promote <id|path|filename>   # copy to plugin inbox-promote")
         return 2
     sub = argv[0]
     rest = argv[1:]
@@ -160,6 +161,15 @@ def cmd_technique(argv):
         n = record_hits([rest[0]])
         append_event("technique_manual_hit", path=rest[0], updated=n)
         print(json.dumps({"updated": n, "path": rest[0]}, ensure_ascii=False))
+        return 0
+    if sub == "promote":
+        if not rest:
+            print("usage: kb technique promote <id|path|filename>")
+            return 2
+        from promote_ops import promote_technique
+
+        result = promote_technique(rest[0])
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     print(f"unknown technique subcommand: {sub}")
     return 2

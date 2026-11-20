@@ -1,8 +1,8 @@
 ---
 name: note
-description: 当用户说“记一下”“先记下来”“先存一下”“做个草稿”时，把当前会话里还没沉淀的原始内容写入 `scratch/<timestamp>-<slug>.md`，只做捕获，不做最终归类。
+description: 当用户说“记一下”“先记下来”“先存一下”“做个草稿”时，把当前会话里还没沉淀的原始内容写入 scratch，并通过 kb note 落盘与打点。
 metadata:
-  skill_version: 0.1.0
+  skill_version: 0.1.1
   owner: experience
   tags:
     - experience
@@ -11,8 +11,8 @@ metadata:
 supported_runtimes: []
 required_capabilities:
   filesystem_read: true
-  filesystem_write: true
-  tool_use: false
+  filesystem_write: false
+  tool_use: true
   network: false
   binary_outputs: false
 io_contract:
@@ -39,12 +39,9 @@ io_contract:
 
 ### 目录与文件名
 
-- 目录：`MEMORY_ROOT/scratch`
-- 文件名：`<timestamp>-<slug>.md`
-- `timestamp` 采用本地时间，格式建议 `YYYYMMDD-HHMMSS`
-- `slug` 只保留小写字母、数字和短横线，尽量短，能表示主题即可
+落盘由 `kb note` 完成：`scratch/<timestamp>-<slug>.md`（引擎自动加时间戳与 slug 清洗）。
 
-如果已经有一个同主题 scratch，而且明显还是同一条记录，就更新最近那份；否则新建一份。
+- `slug` 只保留小写字母、数字和短横线，尽量短，能表示主题即可
 
 ## 写入原则
 
@@ -55,7 +52,7 @@ io_contract:
 
 ## 建议内容结构
 
-scratch 文件建议至少包含这些段落：
+笔记正文建议至少包含这些段落（整段作为 `--body` 或 `--body-file` 传给 kb）：
 
 ```md
 ---
@@ -78,23 +75,25 @@ status: scratch
 <如果需要沉淀，下一步该交给 deposit 做什么>
 ```
 
-## 写盘后必须打点（个人版反馈）
+## 写盘后必须调用 kb note
 
-文件写成功后立刻执行（路径按本机插件位置）：
+组装好正文与 slug 后立刻执行（路径按本机插件位置）：
 
 ```bash
-python3 "$HOME/workspace/AI-dev-kit/plugins/experience/engine/kb" event note \
-  --path "<scratch绝对路径>" \
-  --slug "<slug>"
+KB="$HOME/workspace/AI-dev-kit/plugins/experience/engine/kb"
+# 或 EXPERIENCE_PLUGIN_ROOT/engine/kb；或 PERSONAL_INSTALL.json 的 plugin_root
+
+python3 "$KB" note --slug "<slug>" --body-file "<临时正文路径>"
+# 或较短正文：
+python3 "$KB" note --slug "<slug>" --body "<全文 markdown>"
 ```
 
-不要跳过：没有这条事件，`kb report` 无法统计「记一下」使用情况。
+`kb note` 会写入 scratch 并记录 `note` 事件；**不要**再单独执行 `kb event note`。
 
 ## 检查清单
 
-- 文件确实落在 `scratch/` 下。
+- CLI 输出含 `path` 且文件在 `scratch/` 下。
 - 文件名带时间戳和主题 slug。
 - 用户原句没有被过度改写。
 - 没有把内容提前分到 `facts/`、`methods-personal/` 或 `techniques/index.json`。
-- 已执行 `kb event note`。
-
+- 已执行 `kb note`（勿重复 event）。
