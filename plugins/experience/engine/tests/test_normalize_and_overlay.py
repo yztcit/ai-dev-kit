@@ -18,6 +18,7 @@ def load_kb(memory_root):
     os.environ["DEV_MEMORY_ROOT"] = str(memory_root)
     sys.path.insert(0, str(ENGINE_DIR))
     sys.modules.pop("memory_paths", None)
+    sys.modules.pop("events", None)
     try:
         name = f"kb_test_{uuid.uuid4().hex}"
         loader = SourceFileLoader(name, str(KB_PATH))
@@ -27,7 +28,6 @@ def load_kb(memory_root):
         return module
     finally:
         sys.path.remove(str(ENGINE_DIR))
-        os.environ.pop("DEV_MEMORY_ROOT", None)
 
 
 def git(repo, *args, check=True):

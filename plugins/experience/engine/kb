@@ -26,6 +26,7 @@ import sys
 import time
 
 from memory_paths import ensure_layout
+from events import append_event
 
 HOME = os.path.expanduser("~")
 # Pin root at import so tests can set DEV_MEMORY_ROOT before load_kb() and then clear env.
@@ -337,6 +338,30 @@ def project_desired(desired, overlay):
     return {project_rel(rel, overlay): data for rel, data in desired.items()}
 
 
+def copy_import_file(src, rel, dest_root, compare_root=""):
+    if compare_root:
+        compare = os.path.join(compare_root, *rel.split("/"))
+        if os.path.isfile(compare) and sha_file(src) == sha_file(compare):
+            return False
+    dst = os.path.join(dest_root, *rel.split("/"))
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copy2(src, dst)
+    return True
+
+
+def copy_import_tree(src_root, dest_root, copied, compare_root="", checkout="", rel_prefix=""):
+    if not os.path.isdir(src_root):
+        return 0
+    count = 0
+    for rel, full in walk_files(src_root):
+        if checkout and rel_prefix and is_git_tracked(checkout, f"{rel_prefix}/{rel}"):
+            continue
+        if copy_import_file(full, rel, dest_root, compare_root):
+            copied.append(rel)
+            count += 1
+    return count
+
+
 def load_state(checkout):
     try:
         with open(os.path.join(checkout, STATE_DIR, STATE_FILE), encoding="utf-8") as f:
@@ -602,13 +627,16 @@ def cmd_import(argv):
         print(f"{checkout}: 没有 origin remote，无法确定仓库身份")
         return 2
     overlay_mode = detect_overlay(checkout)
+    branch = current_branch(checkout)
     entry = entry_path(key)
     base = os.path.join(entry, "base")
-    if os.path.isdir(base) and any(_ for _, _ in walk_files(base)) and not force:
+    target_root = base if not branch or branch in TRUNK_BRANCHES else os.path.join(entry, "branches", branch)
+    compare_root = base if target_root != base else ""
+    if target_root == base and os.path.isdir(base) and any(_ for _, _ in walk_files(base)) and not force:
         print(f"条目已存在且非空: {entry}\n确认要覆盖请加 --force")
         return 2
-    shutil.rmtree(base, ignore_errors=True)
-    os.makedirs(base, exist_ok=True)
+    shutil.rmtree(target_root, ignore_errors=True)
+    os.makedirs(target_root, exist_ok=True)
 
     copied = []
     for name in ROOT_FILES:
@@ -622,8 +650,8 @@ def cmd_import(argv):
             rel = git_rel(src, checkout)
             if is_git_tracked(checkout, rel):
                 continue
-            shutil.copy2(src, os.path.join(base, name))
-            copied.append(name)
+            if copy_import_file(src, name, target_root, compare_root):
+                copied.append(name)
             break
     # 项目级 settings.json 是纯项目配置（hooks / 插件开关），应随知识一起走；
     # 但一旦出现本机路径或凭证就留在本地——副本进了 KB 会被跨机器带到不该去的地方。
@@ -635,19 +663,20 @@ def cmd_import(argv):
         except OSError:
             text = ""
         if text and not re.search(r"/Users/|/home/|sk-[A-Za-z0-9]{8,}|PRIVATE KEY", text):
-            shutil.copy2(settings, os.path.join(base, "settings.json"))
-            copied.append("settings.json")
-    for tree in ("agents", "rules", "skills", "tools"):
+            if copy_import_file(settings, "settings.json", target_root, compare_root):
+                copied.append("settings.json")
+    for tree in ("agents", "rules", "skills", "tools", "plans"):
         src = os.path.join(checkout, STATE_DIR, tree)
         if not os.path.isdir(src):
             continue
-        for rel, full in walk_files(src):
-            if is_git_tracked(checkout, f"{STATE_DIR}/{tree}/{rel}"):
-                continue
-            dst = os.path.join(base, tree, rel)
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(full, dst)
-            copied.append(f"{tree}/{rel}")
+        copy_import_tree(
+            src,
+            os.path.join(target_root, tree),
+            copied,
+            os.path.join(compare_root, tree) if compare_root else "",
+            checkout,
+            f"{STATE_DIR}/{tree}",
+        )
 
     cfg = os.path.join(entry, "kb.yml")
     if not os.path.isfile(cfg):
@@ -662,7 +691,14 @@ def cmd_import(argv):
     else:
         update_overlay(entry, overlay_mode)
     rebuild_index()
-    print(f"已导入 {len(copied)} 个文件 → {os.path.relpath(base, KB_ROOT)}")
+    append_event(
+        "import",
+        repo=key,
+        branch=branch or "",
+        target=os.path.relpath(target_root, KB_ROOT),
+        copied=len(copied),
+    )
+    print(f"已导入 {len(copied)} 个文件 → {os.path.relpath(target_root, KB_ROOT)}")
     for rel in copied:
         print(f"  + {rel}")
     print(f"\n下一步: 在各检出跑 `python3 {os.path.realpath(__file__)} sync <目录>`")
