@@ -73,7 +73,7 @@ python3 plugins/experience/engine/kb doctor
 - 产品版本：**0.3.0**（`PERSONAL-USE.md`）
 - 运行时根：`~/.local/share/dev-memory`（可用 `DEV_MEMORY_ROOT` 覆盖）
 - 布局：`facts/`、`methods-personal/`、`scratch/`、`todos/`、`habits/`、`state.json`、`logs/events.jsonl`、`inbox/`、`index.json`
-- 设计：[`EXPERIENCE-COMPOUNDING.md`](EXPERIENCE-COMPOUNDING.md)；插件说明：[`plugins/experience/README.md`](plugins/experience/README.md)
+- 原理：[`docs/design/EXPERIENCE-COMPOUNDING.md`](docs/design/EXPERIENCE-COMPOUNDING.md)；文档治理：[`docs/README.md`](docs/README.md)；插件：[`plugins/experience/README.md`](plugins/experience/README.md)
 
 ## video/：视频生成请求整理
 

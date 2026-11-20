@@ -62,7 +62,7 @@
   5. **个人版 0.3.0（完整产品）**——`PRODUCT_VERSION=0.3.0`；`note` / `deposit-apply` / `todo` / `habit` / `off`·`on` / `help`；分支感知 `import`；SessionStart 开场条；`/kb-*` 命令投影；`PERSONAL-USE.md` + `docs/adapters/*`；实现计划 `docs/superpowers/plans/2026-11-20-experience-personal-0.3.md` 已执行完毕。
 - **剩余项（deferred）**：`plans` 自动巡检；`kb gc-local` 自动删除（仅文档）；Cursor hooks 对等；对外分发/市场叙事；向量检索与跨设备同步。
 - **触发条件**：需要 `plans` 巡检、或路径与实现再次漂移时。
-- **证据在哪**：`DESIGN.md` §八；`EXPERIENCE-COMPOUNDING.md`；`plugins/experience/PERSONAL-USE.md`。
+- **证据在哪**：`DESIGN.md` §八；`docs/design/EXPERIENCE-COMPOUNDING.md`；`plugins/experience/PERSONAL-USE.md`。
 
 ## 5. conventions 插件的 hook 路径未实机验证
 

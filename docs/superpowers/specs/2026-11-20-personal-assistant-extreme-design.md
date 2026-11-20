@@ -153,7 +153,7 @@ docs/
   superpowers/specs/         # 产品设计定稿（本文件）
   superpowers/plans/         # 实现计划
   adapters/<tool>.md         # 他工具薄适配说明
-EXPERIENCE-COMPOUNDING.md    # 经验复利原理（与 0.3 对齐）
+docs/design/EXPERIENCE-COMPOUNDING.md  # 经验复利原理（与 0.3 对齐）
 DESIGN.md                    # 三层准入与防腐不变量
 health/BACKLOG.md            # 推迟项与触发条件
 plugins/conventions/         # 全局规范唯一事实源

@@ -94,7 +94,7 @@
 ## 八、经验侧：偏好与经验的分层
 
 > **落地设计（2026-11-19）**：会话捕获 → Fact/Technique 拆分 → 本机 Fact + 可发布方法 → 自动命中，
-> 见同仓 [`EXPERIENCE-COMPOUNDING.md`](./EXPERIENCE-COMPOUNDING.md)。下文保留原理与已证结论。
+> 见同仓 [`docs/design/EXPERIENCE-COMPOUNDING.md`](./docs/design/EXPERIENCE-COMPOUNDING.md)。下文保留原理与已证结论。
 
 **与放置侧同构**，只是对象不同：
 

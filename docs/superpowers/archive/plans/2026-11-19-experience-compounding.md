@@ -2,8 +2,8 @@
 
 > **状态：已完成 / 被取代（勿再执行）**  
 > V1（约 0.2）已落地。后续以  
-> [`docs/superpowers/plans/2026-11-20-experience-personal-0.3.md`](../docs/superpowers/plans/2026-11-20-experience-personal-0.3.md)  
-> 为准。新计划统一放在 `docs/superpowers/plans/`；本文件仅作历史归档。
+> [`../../plans/2026-11-20-experience-personal-0.3.md`](../../plans/2026-11-20-experience-personal-0.3.md)  
+> 为准。本文件位于 `docs/superpowers/archive/plans/`，仅作历史归档。
 
 > **For agentic workers:** Do not execute this plan. Use the 0.3 plan above.
 
@@ -13,7 +13,7 @@
 
 **Tech Stack:** Python 3 stdlib（引擎）、Claude Code / Cursor plugin（hooks + skills）、本机目录约定。
 
-**Spec:** [`../EXPERIENCE-COMPOUNDING.md`](../EXPERIENCE-COMPOUNDING.md)
+**Spec（原理）：** [`../../../design/EXPERIENCE-COMPOUNDING.md`](../../../design/EXPERIENCE-COMPOUNDING.md)
 
 ## Global Constraints
 
