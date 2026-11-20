@@ -963,6 +963,7 @@ USAGE = """experience kb —— 个人经验复利 CLI
   kb report [--days N] [--json] 汇总命中 / 记一下 / 沉淀等事件
   kb technique bump <id|path> [--to STRENGTH]
   kb technique hit <id|path>    手动 +1 hit_count
+  kb banner [目录]              SessionStart 一行开场条（ON/OFF）
   kb off | kb on                关闭 / 开启 hooks 经验注入
   kb help [主题]                子命令短帮助（完整 CLI 用 kb -h）
 
@@ -1018,6 +1019,15 @@ def cmd_habit(argv):
     return _habit(argv)
 
 
+def cmd_banner(argv):
+    args = [a for a in argv if not a.startswith("--")]
+    checkout = args[0] if args else None
+    from banner import format_banner
+
+    print(format_banner(checkout))
+    return 0
+
+
 def cmd_off(argv):
     from state_ops import cmd_off as _off
 
@@ -1061,6 +1071,7 @@ def main(argv):
         "event": cmd_event,
         "report": cmd_report,
         "technique": cmd_technique,
+        "banner": cmd_banner,
         "off": cmd_off,
         "on": cmd_on,
         "help": cmd_help,

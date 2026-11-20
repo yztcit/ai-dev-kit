@@ -6,6 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ENGINE_DIR="${PLUGIN_DIR}/engine"
 
+if ! python3 -c "import sys; sys.path.insert(0, '${ENGINE_DIR}'); from state_ops import is_enabled; sys.exit(0 if is_enabled() else 1)"; then
+  exit 0
+fi
+
 INPUT="$(cat || true)"
 
 EXPERIENCE_PROMPT_JSON="$INPUT" python3 - "$ENGINE_DIR" "$PLUGIN_DIR" <<'PY'

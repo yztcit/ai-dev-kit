@@ -5,6 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ENGINE_DIR="${PLUGIN_DIR}/engine"
 
+python3 "${ENGINE_DIR}/kb" banner
+if ! python3 -c "import sys; sys.path.insert(0, '${ENGINE_DIR}'); from state_ops import is_enabled; sys.exit(0 if is_enabled() else 1)"; then
+  exit 0
+fi
+
 python3 - "${ENGINE_DIR}" "${PLUGIN_DIR}" <<'PY'
 import importlib.util
 import os
