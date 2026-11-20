@@ -1,3 +1,7 @@
+---
+description: 【经验库】用 KB 刷新当前检出的 `.claude` / `CLAUDE.md` 投影；不写入 KB base。
+---
+
 # /kb-sync
 
 【经验库】用 KB 刷新当前检出的 `.claude` / `CLAUDE.md` 投影；不写入 KB base。

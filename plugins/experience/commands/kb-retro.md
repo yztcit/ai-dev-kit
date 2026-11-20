@@ -1,3 +1,7 @@
+---
+description: 【经验库】按近几日事件复盘，建议 bump / todo / promote；只读报告与索引，不自动改库。
+---
+
 # /kb-retro
 
 【经验库】按近几日事件复盘，建议 bump / todo / promote；只读报告与索引，不自动改库。

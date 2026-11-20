@@ -1,3 +1,7 @@
+---
+description: 【经验库】把已验证的个人技巧去语境化后导出到可分享候选目录并打点；不自动开 PR、不改 claude_plugins 源码。
+---
+
 # /kb-promote
 
 【经验库】把已验证的个人技巧去语境化后导出到可分享候选目录并打点；不自动开 PR、不改 claude_plugins 源码。

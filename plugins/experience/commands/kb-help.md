@@ -1,3 +1,7 @@
+---
+description: 【经验库】帮助：查 note/deposit/import/todo/off…怎么用；不另写第二套长文档。
+---
+
 # /kb-help
 
 【经验库】帮助：查 note/deposit/import/todo/off…怎么用；不另写第二套长文档。

@@ -1,3 +1,7 @@
+---
+description: 【经验库】把会话拆成 Fact / Technique / 仓内 plans，校验后整单写入 KB；不改检出里的 `.claude` 源稿。
+---
+
 # /kb-deposit
 
 【经验库】把会话拆成 Fact / Technique / 仓内 plans，校验后整单写入 KB；不改检出里的 `.claude` 源稿。

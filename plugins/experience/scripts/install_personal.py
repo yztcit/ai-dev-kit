@@ -58,18 +58,37 @@ def _ensure_command_links() -> int:
 
 
 def _ensure_skill_links():
+    """Link skills as kb-* so Claude slash names match product prefix (not /note)."""
     skills_root = Path.home() / ".claude" / "skills"
     skills_root.mkdir(parents=True, exist_ok=True)
-    for name in ("note", "deposit"):
-        dest_dir = skills_root / name
+    # Remove legacy short names that showed up as /note /deposit beside /kb-note.
+    for legacy in ("note", "deposit"):
+        legacy_link = skills_root / legacy / "SKILL.md"
+        if legacy_link.is_symlink() or legacy_link.exists():
+            try:
+                legacy_link.unlink()
+            except OSError:
+                pass
+        legacy_dir = skills_root / legacy
+        if legacy_dir.is_dir() and not any(legacy_dir.iterdir()):
+            try:
+                legacy_dir.rmdir()
+            except OSError:
+                pass
+    # plugin skill dir name -> installed slash/skill name
+    mapping = (
+        ("note", "kb-note"),
+        ("deposit", "kb-deposit"),
+        ("habit", "kb-habit"),
+    )
+    for src_name, dest_name in mapping:
+        dest_dir = skills_root / dest_name
         dest_dir.mkdir(parents=True, exist_ok=True)
         link = dest_dir / "SKILL.md"
-        target = PLUGIN_ROOT / "skills" / name / "SKILL.md"
-        if link.is_symlink() or link.exists():
-            if link.resolve() == target.resolve():
-                continue
-            link.unlink()
-        link.symlink_to(target)
+        target = PLUGIN_ROOT / "skills" / src_name / "SKILL.md"
+        if not target.is_file():
+            continue
+        _link_or_replace(link, target)
 
 
 def _experience_hook_cmd(script_name: str) -> str:

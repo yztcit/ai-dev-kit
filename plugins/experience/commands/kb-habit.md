@@ -1,3 +1,7 @@
+---
+description: 【经验库】记跨项目个人习惯，开场注入摘要；不写进某仓 Fact，不改 claude_plugins。
+---
+
 # /kb-habit
 
 【经验库】记跨项目个人习惯，开场注入摘要；不写进某仓 Fact，不改 claude_plugins。

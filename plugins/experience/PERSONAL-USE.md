@@ -15,7 +15,9 @@ bash ~/workspace/AI-dev-kit/plugins/experience/scripts/install_personal.sh
 python3 ~/workspace/AI-dev-kit/plugins/experience/engine/kb doctor
 ```
 
-install 会：建 `~/.local/share/dev-memory`（含 `todos/`、`habits/`、`state.json`）、拷种子技巧、软链 `note`/`deposit` skills、注册 Claude hooks、把 `commands/kb-*.md` **投影**到 `~/.claude/commands/` 与 `~/.cursor/commands/`。
+install 会：建 `~/.local/share/dev-memory`、拷种子技巧、软链 skills 为 **`kb-note` / `kb-deposit` / `kb-habit`**（避免再出现无前缀的 `/note`）、注册 Claude hooks、把带 YAML 注释的 `commands/kb-*.md` 投影到 `~/.claude/commands/` 与 `~/.cursor/commands/`。
+
+**Claude 若敲 `/kb` 仍无自动完成：** 先重跑 install，再**重启 Claude Code 会话/窗口**（命令列表多在启动时加载）。菜单里应只见 `/kb-*`，不应再有单独的 `/note`、`/deposit`。
 
 换机器或挪了 `AI-dev-kit` 目录后重跑 install。`doctor` 全绿即可（`kb off` 时为 **DISABLED**，仍算通过）。
 

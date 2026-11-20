@@ -1,3 +1,7 @@
+---
+description: 【经验库】把个人技巧升档或标否定；改 methods-personal 索引与卡面 strength，不打 PR。
+---
+
 # /kb-bump
 
 【经验库】把个人技巧升档或标否定；改 methods-personal 索引与卡面 strength，不打 PR。

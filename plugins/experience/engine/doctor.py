@@ -114,10 +114,20 @@ def run_doctor(plugin_dir: Path | None = None) -> dict:
         add(has_session, "claude_session_hook", "SessionStart → experience session_start.sh")
         add(has_prompt, "claude_prompt_hook", "UserPromptSubmit → experience prompt_hit.sh")
 
-    note_ok, note_detail = _skill_ok("note")
-    deposit_ok, deposit_detail = _skill_ok("deposit")
-    add(note_ok, "skill_note", note_detail)
-    add(deposit_ok, "skill_deposit", deposit_detail)
+    note_ok, note_detail = _skill_ok("kb-note")
+    deposit_ok, deposit_detail = _skill_ok("kb-deposit")
+    add(note_ok, "skill_kb_note", note_detail)
+    add(deposit_ok, "skill_kb_deposit", deposit_detail)
+    # Prefer Claude user commands with frontmatter (autocomplete)
+    claude_note = Path.home() / ".claude" / "commands" / "kb-note.md"
+    if claude_note.is_file() or claude_note.is_symlink():
+        add(True, "claude_slash_commands", str(claude_note.resolve()))
+    else:
+        add(
+            True,
+            "claude_slash_commands",
+            "WARN: missing ~/.claude/commands/kb-note.md — run install_personal.py; restart Claude",
+        )
 
     marker = _load_json(Path(install_marker_path()))
     if marker:
