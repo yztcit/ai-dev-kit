@@ -125,6 +125,16 @@ def run_doctor(plugin_dir: Path | None = None) -> dict:
     else:
         add(False, "install_marker", "run install_personal.py once")
 
+    cursor_note = Path.home() / ".cursor" / "commands" / "kb-note.md"
+    if cursor_note.is_file():
+        add(True, "slash_commands", str(cursor_note.resolve()))
+    else:
+        add(
+            True,
+            "slash_commands",
+            "WARN: missing ~/.cursor/commands/kb-note.md — run install_personal.py",
+        )
+
     events_file = Path(events_path())
     event_lines = 0
     if events_file.is_file():

@@ -25,6 +25,38 @@ def _settings_path() -> Path:
     return Path.home() / ".claude" / "settings.json"
 
 
+def _link_or_replace(dest: Path, target: Path) -> bool:
+    """Symlink dest → target if missing or pointing elsewhere. Returns True if updated."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    target = target.resolve()
+    if dest.is_symlink() or dest.exists():
+        try:
+            if dest.resolve() == target:
+                return False
+        except OSError:
+            pass
+        dest.unlink()
+    dest.symlink_to(target)
+    return True
+
+
+def _ensure_command_links() -> int:
+    """Project commands/kb-*.md into Cursor and Claude command dirs."""
+    src_dir = PLUGIN_ROOT / "commands"
+    if not src_dir.is_dir():
+        return 0
+    updated = 0
+    targets = (
+        Path.home() / ".cursor" / "commands",
+        Path.home() / ".claude" / "commands",
+    )
+    for src in sorted(src_dir.glob("kb-*.md")):
+        for root in targets:
+            if _link_or_replace(root / src.name, src):
+                updated += 1
+    return updated
+
+
 def _ensure_skill_links():
     skills_root = Path.home() / ".claude" / "skills"
     skills_root.mkdir(parents=True, exist_ok=True)
@@ -105,6 +137,7 @@ def main():
     ensure_layout()
     copied = ensure_seed_techniques(PLUGIN_ROOT)
     _ensure_skill_links()
+    commands_linked = _ensure_command_links()
 
     settings_file = _settings_path()
     if settings_file.is_file():
@@ -125,6 +158,7 @@ def main():
     print(f"experience personal install · v{PRODUCT_VERSION}")
     print(f"  plugin: {PLUGIN_ROOT}")
     print(f"  seeds_copied: {copied}")
+    print(f"  commands_linked: {commands_linked}")
     print(f"  hooks_updated: {hooks_changed}")
     print(f"  doctor: {'OK' if result['ok'] else 'NEEDS_FIX'}")
     if not result["ok"]:
